@@ -1,0 +1,76 @@
+---
+title: Health check
+description: Verify the API server status and version
+---
+
+Check if the CALZADO J&R API is running and responsive.
+
+## Endpoint
+
+```http
+GET /api/v1/health
+```
+
+## Authentication
+
+No authentication required. This is a public endpoint.
+
+## Response
+
+<ResponseField name="status" type="string">
+  Server health status. Always returns `"healthy"` when the server is operational.
+</ResponseField>
+
+<ResponseField name="project" type="string">
+  Project name identifier: `"CALZADO J&R"`
+</ResponseField>
+
+<ResponseField name="version" type="string">
+  Current API version (e.g., `"0.1.0"`)
+</ResponseField>
+
+## Example request
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:8000/api/v1/health
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/v1/health');
+const health = await response.json();
+console.log(health);
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:8000/api/v1/health')
+health = response.json()
+print(health)
+```
+</CodeGroup>
+
+## Example response
+
+```json
+{
+  "status": "healthy",
+  "project": "CALZADO J&R",
+  "version": "0.1.0"
+}
+```
+
+## Status codes
+
+| Code | Description |
+|------|-------------|
+| 200  | Server is healthy and operational |
+| 503  | Server is unavailable (should not return this - server would be down) |
+
+## Use cases
+
+- **Monitoring**: Automated health checks for uptime monitoring
+- **Load balancers**: Verify backend instances are ready to receive traffic
+- **Deployment validation**: Confirm successful deployment before routing production traffic
+- **Development**: Quick connectivity test during local development
