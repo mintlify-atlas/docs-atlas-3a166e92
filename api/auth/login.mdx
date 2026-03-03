@@ -1,0 +1,106 @@
+---
+title: Login
+description: Authenticate a user and return JWT tokens for accessing protected endpoints.
+---
+
+## Endpoint
+
+```
+POST /api/v1/auth/login
+```
+
+## Request body
+
+<ParamField body="email" type="string" required>
+  User's email address.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User's password.
+</ParamField>
+
+## Response
+
+<ResponseField name="access_token" type="string">
+  JWT access token used to authenticate API requests. Include this token in the `Authorization` header as `Bearer {access_token}`.
+</ResponseField>
+
+<ResponseField name="refresh_token" type="string">
+  JWT refresh token used to obtain a new access token when it expires. Store securely and use with the `/api/v1/auth/refresh` endpoint.
+</ResponseField>
+
+<ResponseField name="token_type" type="string">
+  Type of token. Always returns `"bearer"`.
+</ResponseField>
+
+## Status codes
+
+<ResponseField name="200" type="OK">
+  Authentication successful.
+</ResponseField>
+
+<ResponseField name="400" type="Bad Request">
+  Invalid request format.
+</ResponseField>
+
+<ResponseField name="401" type="Unauthorized">
+  Invalid credentials, account not active, or account not validated.
+</ResponseField>
+
+<ResponseField name="422" type="Unprocessable Entity">
+  Validation error in request data.
+</ResponseField>
+
+## Example request
+
+```bash
+curl -X POST https://api.calzadojr.com/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "cliente@example.com",
+    "password": "SecurePass123"
+  }'
+```
+
+## Example response
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJleHAiOjE3MDk0NzE0MDB9.abc123",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJleHAiOjE3MTAwNzYyMDB9.xyz789",
+  "token_type": "bearer"
+}
+```
+
+## Error responses
+
+### Invalid credentials
+
+```json
+{
+  "detail": "Email o contraseña incorrectos"
+}
+```
+
+### Account not validated
+
+```json
+{
+  "detail": "Tu cuenta está pendiente de validación por un administrador"
+}
+```
+
+### Account not active
+
+```json
+{
+  "detail": "Tu cuenta ha sido desactivada"
+}
+```
+
+## Notes
+
+- The access token has a shorter expiration time (typically 15-30 minutes)
+- The refresh token has a longer expiration time (typically 7-30 days)
+- Store tokens securely on the client side (e.g., httpOnly cookies or secure storage)
+- Include the access token in the `Authorization` header for subsequent requests: `Authorization: Bearer {access_token}`

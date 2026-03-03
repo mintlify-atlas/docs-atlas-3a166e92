@@ -1,0 +1,121 @@
+---
+title: "Get current user"
+description: "Retrieve the authenticated user's profile information"
+---
+
+## Endpoint
+
+<Endpoint method="GET" path="/api/v1/users/me" />
+
+Returns the profile information of the currently authenticated user.
+
+## Authentication
+
+This endpoint requires a valid JWT access token in the Authorization header.
+
+<CodeGroup>
+```bash cURL
+curl -X GET https://api.calzadojr.com/api/v1/users/me \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.calzadojr.com/api/v1/users/me', {
+  method: 'GET',
+  headers: {
+    'Authorization': 'Bearer YOUR_ACCESS_TOKEN'
+  }
+});
+
+const user = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://api.calzadojr.com/api/v1/users/me',
+    headers={'Authorization': 'Bearer YOUR_ACCESS_TOKEN'}
+)
+
+user = response.json()
+```
+</CodeGroup>
+
+## Response
+
+<ResponseField name="id" type="string (uuid)">
+  Unique identifier for the user
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User's email address
+</ResponseField>
+
+<ResponseField name="full_name" type="string">
+  User's full name
+</ResponseField>
+
+<ResponseField name="phone" type="string | null">
+  User's phone number (optional)
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Whether the user account is active
+</ResponseField>
+
+<ResponseField name="is_validated" type="boolean">
+  Whether the user's email has been validated
+</ResponseField>
+
+<ResponseField name="role_name" type="string | null">
+  Name of the user's role (e.g., "cliente", "admin")
+</ResponseField>
+
+<ResponseField name="business_name" type="string | null">
+  User's business name (optional)
+</ResponseField>
+
+<ResponseField name="occupation" type="string | null">
+  User's occupation (optional)
+</ResponseField>
+
+<ResponseField name="created_at" type="string (datetime)">
+  Timestamp when the user account was created
+</ResponseField>
+
+<ResponseField name="updated_at" type="string (datetime)">
+  Timestamp when the user account was last updated
+</ResponseField>
+
+## Response example
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "usuario@example.com",
+  "full_name": "Juan Pérez",
+  "phone": "+593987654321",
+  "is_active": true,
+  "is_validated": true,
+  "role_name": "cliente",
+  "business_name": "Tienda El Sol",
+  "occupation": "Comerciante",
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-03-01T14:20:00Z"
+}
+```
+
+## Status codes
+
+<ResponseField name="200" type="OK">
+  Successfully retrieved user profile
+</ResponseField>
+
+<ResponseField name="401" type="Unauthorized">
+  Missing or invalid authentication token
+</ResponseField>
+
+<ResponseField name="403" type="Forbidden">
+  Token is valid but user doesn't have permission to access this resource
+</ResponseField>

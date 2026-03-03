@@ -1,0 +1,636 @@
+---
+title: Installation
+description: Detailed setup instructions for CALZADO J&R in Docker and local development environments
+---
+
+## Installation methods
+
+CALZADO J&R supports two installation approaches:
+
+1. **Docker Compose** (recommended) - Fully isolated environment with automatic dependency management
+2. **Local development** - Direct installation on your system for advanced debugging and development
+
+<Note>
+  For most users, Docker Compose is the fastest and most reliable option. Choose local development only if you need direct access to Python/Node processes or prefer native tooling.
+</Note>
+
+## Docker Compose installation
+
+### Prerequisites
+
+<Steps>
+  <Step title="Verify Docker installation">
+    Check that Docker and Docker Compose are installed:
+
+    ```bash
+    docker --version
+    # Expected: Docker version 24.0.0 or higher
+
+    docker compose version
+    # Expected: Docker Compose version 2.20.0 or higher
+    ```
+
+    <Warning>
+      If either command fails, install Docker Desktop from [docker.com](https://www.docker.com/get-started) before continuing.
+    </Warning>
+  </Step>
+
+  <Step title="Clone the repository">
+    ```bash
+    git clone <repository-url>
+    cd calzado-jyr
+    ```
+  </Step>
+</Steps>
+
+### Environment configuration
+
+<Steps>
+  <Step title="Create environment file">
+    Copy the example environment configuration:
+
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+
+  <Step title="Configure required variables">
+    Open `.env` in your text editor and update these critical values:
+
+    <AccordionGroup>
+      <Accordion title="Database credentials">
+        ```bash
+        # PostgreSQL Configuration
+        POSTGRES_USER=jyr_user
+        POSTGRES_PASSWORD=your_secure_password_here  # CHANGE THIS
+        POSTGRES_DB=calzado_jyr_db
+        DB_PORT=5432
+        ```
+
+        <Warning>
+          Never use the default password in production. Generate a secure password with:
+          ```bash
+          openssl rand -base64 24
+          ```
+        </Warning>
+      </Accordion>
+
+      <Accordion title="JWT authentication">
+        ```bash
+        # Generate SECRET_KEY with:
+        # python -c "import secrets; print(secrets.token_urlsafe(48))"
+        SECRET_KEY=your_generated_secret_key_here  # CHANGE THIS
+        ALGORITHM=HS256
+        ACCESS_TOKEN_EXPIRE_MINUTES=15
+        REFRESH_TOKEN_EXPIRE_DAYS=7
+        ```
+
+        The `SECRET_KEY` signs all JWT tokens. Without changing it, your authentication is vulnerable.
+      </Accordion>
+
+      <Accordion title="Email configuration">
+        ```bash
+        # SMTP Settings
+        MAIL_SERVER=smtp.gmail.com
+        MAIL_PORT=587
+        MAIL_USERNAME=noreply@calzadojyr.com  # Your email
+        MAIL_PASSWORD=your_smtp_app_password  # CHANGE THIS
+        MAIL_FROM=noreply@calzadojyr.com
+        MAIL_FROM_NAME=CALZADO J&R
+        ```
+
+        For Gmail:
+        1. Enable 2-factor authentication on your Google account
+        2. Generate an [App Password](https://support.google.com/accounts/answer/185833)
+        3. Use the 16-character app password in `MAIL_PASSWORD`
+      </Accordion>
+
+      <Accordion title="Service URLs">
+        ```bash
+        # Development URLs (no changes needed)
+        FRONTEND_URL=http://localhost:5173
+        VITE_API_URL=http://localhost:8000
+        BE_PORT=8000
+        FE_PORT=5173
+        ```
+
+        Only change these if you have port conflicts with other services.
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+</Steps>
+
+### Launch the system
+
+<Steps>
+  <Step title="Build and start services">
+    ```bash
+    docker compose up -d --build
+    ```
+
+    This command:
+    - Builds optimized Docker images for backend and frontend
+    - Starts PostgreSQL 17 with Alpine Linux (minimal footprint)
+    - Initializes database schema with SQL scripts
+    - Launches FastAPI with hot-reload enabled
+    - Starts Vite development server with HMR (Hot Module Replacement)
+
+    The `--build` flag is only required on first run or after dependency changes.
+  </Step>
+
+  <Step title="Verify service health">
+    Check that all three services are running:
+
+    ```bash
+    docker compose ps
+    ```
+
+    Expected output:
+    ```
+    NAME                 STATUS         PORTS
+    calzado_jyr_db       Up (healthy)   0.0.0.0:5432->5432/tcp
+    calzado_jyr_be       Up             0.0.0.0:8000->8000/tcp
+    calzado_jyr_fe       Up             0.0.0.0:5173->5173/tcp
+    ```
+
+    <Note>
+      The database has a health check that ensures PostgreSQL is ready before starting the backend. This prevents connection errors.
+    </Note>
+  </Step>
+
+  <Step title="Create administrator account">
+    ```bash
+    docker compose exec be python scripts/create_admin.py
+    ```
+
+    Default credentials:
+    - **Email:** admin@calzadojyr.com
+    - **Password:** Admin123!
+
+    <Warning>
+      Change the admin password immediately after first login via the application interface.
+    </Warning>
+  </Step>
+</Steps>
+
+### Access the application
+
+| Service | URL | Purpose |
+|---------|-----|----------|
+| Frontend | http://localhost:5173 | React application with authentication UI |
+| Backend API | http://localhost:8000 | REST API with CORS enabled for frontend |
+| API Docs | http://localhost:8000/docs | Interactive Swagger UI for testing endpoints |
+| ReDoc | http://localhost:8000/redoc | Alternative API documentation |
+| PostgreSQL | localhost:5432 | Direct database access (use DBeaver, pgAdmin, etc.) |
+
+### Useful commands
+
+<AccordionGroup>
+  <Accordion title="View logs">
+    <CodeGroup>
+    ```bash All services
+    docker compose logs -f
+    ```
+
+    ```bash Backend only
+    docker compose logs -f be
+    ```
+
+    ```bash Last 100 lines
+    docker compose logs --tail=100 be
+    ```
+    </CodeGroup>
+  </Accordion>
+
+  <Accordion title="Restart services">
+    ```bash
+    # Restart single service
+    docker compose restart be
+
+    # Restart all services
+    docker compose restart
+    ```
+  </Accordion>
+
+  <Accordion title="Rebuild after code changes">
+    ```bash
+    # Rebuild backend after changing requirements.txt
+    docker compose build be
+    docker compose restart be
+
+    # Rebuild frontend after changing package.json
+    docker compose build fe
+    docker compose restart fe
+    ```
+
+    <Note>
+      Code changes inside `be/app/` and `fe/src/` directories are automatically detected thanks to volume mounts—no rebuild needed.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Access container shells">
+    ```bash
+    # Backend container bash
+    docker compose exec be bash
+
+    # Database psql shell
+    docker compose exec db psql -U jyr_user -d calzado_jyr_db
+
+    # Frontend container shell
+    docker compose exec fe sh
+    ```
+  </Accordion>
+
+  <Accordion title="Stop and cleanup">
+    <CodeGroup>
+    ```bash Stop services (keep data)
+    docker compose down
+    ```
+
+    ```bash Stop and remove data
+    docker compose down -v
+    ```
+
+    ```bash Remove everything including images
+    docker compose down -v --rmi all
+    ```
+    </CodeGroup>
+
+    <Warning>
+      The `-v` flag deletes the PostgreSQL volume permanently. All users, orders, and data will be lost.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Local development installation
+
+<Note>
+  This method requires manually installing PostgreSQL 17+, Python 3.12+, and Node.js 20+. Use Docker Compose unless you specifically need native development.
+</Note>
+
+### Prerequisites verification
+
+<Steps>
+  <Step title="Check Python version">
+    ```bash
+    python --version
+    # Required: Python 3.12.0 or higher
+    ```
+
+    If Python 3.12+ is not installed, download from [python.org](https://www.python.org/downloads/).
+  </Step>
+
+  <Step title="Check Node.js version">
+    ```bash
+    node --version
+    # Required: v20.0.0 or higher (LTS recommended)
+
+    npm --version
+    # Any recent version
+    ```
+
+    Install Node.js LTS from [nodejs.org](https://nodejs.org/) if needed.
+  </Step>
+
+  <Step title="Check PostgreSQL installation">
+    ```bash
+    psql --version
+    # Required: PostgreSQL 17.0 or higher
+    ```
+
+    Install PostgreSQL from:
+    - **macOS:** `brew install postgresql@17`
+    - **Ubuntu:** Follow [PostgreSQL apt repository guide](https://www.postgresql.org/download/linux/ubuntu/)
+    - **Windows:** Download installer from [postgresql.org](https://www.postgresql.org/download/windows/)
+  </Step>
+</Steps>
+
+### Database setup
+
+<Steps>
+  <Step title="Create database and user">
+    Connect to PostgreSQL as superuser:
+
+    ```bash
+    psql -U postgres
+    ```
+
+    Run these SQL commands:
+
+    ```sql
+    CREATE USER jyr_user WITH PASSWORD 'your_secure_password';
+    CREATE DATABASE calzado_jyr_db OWNER jyr_user;
+    GRANT ALL PRIVILEGES ON DATABASE calzado_jyr_db TO jyr_user;
+    \q
+    ```
+  </Step>
+
+  <Step title="Run initialization scripts">
+    ```bash
+    psql -U jyr_user -d calzado_jyr_db -f db/init/01_create_tables.sql
+    psql -U jyr_user -d calzado_jyr_db -f db/init/02_triggers_and_indexes.sql
+    ```
+
+    These scripts create the `roles` and `users` tables with proper indexes and constraints.
+  </Step>
+</Steps>
+
+### Backend setup
+
+<Steps>
+  <Step title="Navigate to backend directory">
+    ```bash
+    cd be
+    ```
+  </Step>
+
+  <Step title="Create virtual environment">
+    <CodeGroup>
+    ```bash Linux/macOS
+    python -m venv .venv
+    source .venv/bin/activate
+    ```
+
+    ```bash Windows
+    python -m venv .venv
+    .venv\Scripts\activate
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    This installs:
+    - FastAPI (web framework)
+    - SQLAlchemy 2.0 (ORM)
+    - Alembic (database migrations)
+    - python-jose (JWT tokens)
+    - passlib (password hashing)
+    - httpx (testing)
+    - pytest (test framework)
+  </Step>
+
+  <Step title="Configure backend environment">
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `be/.env` with your local database URL:
+
+    ```bash
+    DATABASE_URL=postgresql://jyr_user:your_password@localhost:5432/calzado_jyr_db
+    SECRET_KEY=your_generated_secret_key
+    MAIL_USERNAME=your_email@gmail.com
+    MAIL_PASSWORD=your_app_password
+    FRONTEND_URL=http://localhost:5173
+    ```
+  </Step>
+
+  <Step title="Create admin account">
+    ```bash
+    python scripts/create_admin.py
+    ```
+  </Step>
+
+  <Step title="Start the backend server">
+    ```bash
+    uvicorn app.main:app --reload
+    ```
+
+    Backend is now running at:
+    - API: http://localhost:8000
+    - Docs: http://localhost:8000/docs
+
+    <Note>
+      The `--reload` flag enables automatic server restart on code changes.
+    </Note>
+  </Step>
+</Steps>
+
+### Frontend setup
+
+<Steps>
+  <Step title="Navigate to frontend directory">
+    Open a **new terminal** (keep backend running) and run:
+
+    ```bash
+    cd fe
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+
+    This installs:
+    - React 19.2 (UI framework)
+    - Vite 7 (build tool)
+    - TypeScript 5.9 (type safety)
+    - TailwindCSS 4 (styling)
+    - React Router 7 (routing)
+    - Axios (HTTP client)
+  </Step>
+
+  <Step title="Configure frontend environment">
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `fe/.env`:
+
+    ```bash
+    VITE_API_URL=http://localhost:8000
+    ```
+
+    <Warning>
+      Vite only exposes variables prefixed with `VITE_` to the browser. Never put secrets in these variables.
+    </Warning>
+  </Step>
+
+  <Step title="Start the development server">
+    ```bash
+    npm run dev
+    ```
+
+    Frontend is now running at http://localhost:5173 with hot module replacement enabled.
+  </Step>
+</Steps>
+
+### Run tests
+
+<AccordionGroup>
+  <Accordion title="Backend tests">
+    ```bash
+    cd be
+    source .venv/bin/activate  # if not already activated
+    pytest
+    ```
+
+    Run with coverage:
+    ```bash
+    pytest --cov=app --cov-report=html
+    ```
+  </Accordion>
+
+  <Accordion title="Frontend tests">
+    ```bash
+    cd fe
+    npm run test
+    ```
+
+    Run with coverage:
+    ```bash
+    npm run test:coverage
+    ```
+
+    Watch mode for development:
+    ```bash
+    npm run test:watch
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Project structure
+
+```
+calzado-jyr/
+├── docker-compose.yml          # Orchestrates db, be, fe services
+├── .env.example                # Environment template (root)
+├── README.md                   # Project overview
+│
+├── db/                         # Database initialization
+│   └── init/
+│       ├── 01_create_tables.sql
+│       └── 02_triggers_and_indexes.sql
+│
+├── be/                         # Backend (FastAPI)
+│   ├── Dockerfile              # Multi-stage build (dev/prod)
+│   ├── .env.example            # Backend environment template
+│   ├── requirements.txt        # Python dependencies
+│   ├── app/
+│   │   ├── main.py             # FastAPI application entry point
+│   │   ├── config.py           # Environment variable loading
+│   │   ├── database.py         # SQLAlchemy engine and session
+│   │   ├── dependencies.py     # Dependency injection
+│   │   ├── models/             # ORM models (Role, User, PasswordResetToken)
+│   │   ├── schemas/            # Pydantic validation schemas
+│   │   ├── routers/            # API endpoints (auth, users)
+│   │   ├── services/           # Business logic
+│   │   └── utils/              # Security and email utilities
+│   ├── alembic/                # Database migrations
+│   └── scripts/
+│       └── create_admin.py     # Admin creation script
+│
+└── fe/                         # Frontend (React + Vite)
+    ├── Dockerfile              # Multi-stage build (dev/prod with nginx)
+    ├── nginx.conf              # SPA routing configuration
+    ├── .env.example            # Frontend environment template
+    ├── package.json            # Node.js dependencies
+    └── src/
+        ├── main.tsx            # React entry point
+        ├── pages/              # Route pages
+        ├── components/         # Reusable UI components
+        ├── api/                # Axios HTTP clients
+        └── context/            # Global state (AuthContext)
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port already in use">
+    **Symptom:** Error binding to port 5432, 8000, or 5173
+
+    **Solution:** Change ports in `.env`:
+    ```bash
+    DB_PORT=5433
+    BE_PORT=8001
+    FE_PORT=5174
+    ```
+
+    Then restart services:
+    ```bash
+    docker compose down
+    docker compose up -d
+    ```
+  </Accordion>
+
+  <Accordion title="Database connection refused">
+    **Symptom:** Backend logs show `FATAL: password authentication failed`
+
+    **Solution:**
+    1. Verify `POSTGRES_PASSWORD` matches in `.env`
+    2. Check `DATABASE_URL` uses correct credentials
+    3. Restart database:
+       ```bash
+       docker compose restart db
+       docker compose logs db
+       ```
+  </Accordion>
+
+  <Accordion title="Frontend can't reach backend">
+    **Symptom:** CORS errors or network failures in browser console
+
+    **Solution:**
+    1. Verify backend is running: `curl http://localhost:8000/api/v1/health`
+    2. Check `VITE_API_URL` in `fe/.env` matches backend URL
+    3. Confirm `FRONTEND_URL` in backend `.env` matches frontend URL
+    4. Rebuild frontend:
+       ```bash
+       docker compose build fe
+       docker compose restart fe
+       ```
+  </Accordion>
+
+  <Accordion title="Admin creation fails">
+    **Symptom:** `Error: El rol 'admin' no existe en la base de datos`
+
+    **Solution:** Database initialization didn't run. Execute:
+    ```bash
+    docker compose exec db psql -U jyr_user -d calzado_jyr_db -f /docker-entrypoint-initdb.d/01_create_tables.sql
+    docker compose exec be python scripts/create_admin.py
+    ```
+  </Accordion>
+
+  <Accordion title="Email sending fails">
+    **Symptom:** Forgot password doesn't send email
+
+    **Solution:**
+    1. For Gmail, ensure you're using an [App Password](https://support.google.com/accounts/answer/185833), not your account password
+    2. Check SMTP settings in `.env`:
+       ```bash
+       MAIL_SERVER=smtp.gmail.com
+       MAIL_PORT=587
+       ```
+    3. Test SMTP credentials:
+       ```bash
+       docker compose exec be python -c "from app.utils.email import send_email; import asyncio; asyncio.run(send_email('test@example.com', 'Test', 'Body'))"
+       ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="User roles" icon="shield" href="/concepts/roles">
+    Learn about admin, employee, and customer workflows
+  </Card>
+  <Card title="API reference" icon="code" href="/api/auth/register">
+    Explore authentication and user management endpoints
+  </Card>
+  <Card title="Production deployment" icon="rocket" href="/deployment/docker">
+    Deploy to cloud providers with production configurations
+  </Card>
+  <Card title="Development guide" icon="laptop-code" href="/guides/database">
+    Contributing guidelines and development best practices
+  </Card>
+</CardGroup>

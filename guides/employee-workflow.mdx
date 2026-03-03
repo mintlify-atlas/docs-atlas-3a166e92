@@ -1,0 +1,192 @@
+---
+title: Employee workflow
+description: Guide for employees to access their tasks and manage their work in CALZADO J&R
+---
+
+Employees work on assigned tasks based on their occupation. This guide covers how to get started and use your employee dashboard.
+
+## Getting your account
+
+<Note>
+Employees cannot register themselves. Your account must be created by an administrator.
+</Note>
+
+When an administrator creates your employee account:
+
+1. The system generates a secure temporary password
+2. You receive an email with your login credentials:
+   - Your email address (username)
+   - Temporary password
+3. Your account is created with these details:
+   - First name (Nombres)
+   - Last name (Apellidos)
+   - Phone number
+   - Email
+   - Occupation (your role in production)
+
+<Info>
+Check your spam folder if you don't see the credentials email. Contact your administrator if you need the credentials resent.
+</Info>
+
+## Employee occupations
+
+Your account is assigned one of these occupations:
+
+- **Guarnición**: Upper assembly work
+- **Solador**: Sole attachment
+- **Cortador**: Cutting leather and materials
+- **Emplantillador**: Insole preparation
+
+Your occupation determines which tasks appear in your dashboard.
+
+## First login
+
+<Steps>
+  <Step title="Navigate to login page">
+    Go to `http://localhost:5173` (or your company's deployment URL) and click on the login option.
+  </Step>
+  
+  <Step title="Enter credentials from email">
+    Enter the email and temporary password that were sent to you by the administrator.
+  </Step>
+  
+  <Step title="System detects your role">
+    The system automatically identifies you as an employee and prepares to redirect you to the task dashboard.
+  </Step>
+  
+  <Step title="Forced password change">
+    Before accessing your dashboard, you **must** change your password. The system will display a password change form.
+  </Step>
+</Steps>
+
+<Note>
+You cannot skip the password change step. This security measure ensures only you know your password.
+</Note>
+
+## Changing your password
+
+### On first login
+
+When you log in for the first time, you'll see a password change form:
+
+<Steps>
+  <Step title="Enter your current password">
+    This is the temporary password from the email.
+  </Step>
+  
+  <Step title="Enter your new password">
+    Choose a strong password that you'll remember.
+  </Step>
+  
+  <Step title="Confirm your new password">
+    Re-enter the new password to confirm.
+  </Step>
+  
+  <Step title="Submit the form">
+    After submitting, the system updates your password and sets `must_change_password=False`, allowing you to access your dashboard.
+  </Step>
+</Steps>
+
+### Changing password later
+
+You can change your password anytime from your account settings:
+
+1. Navigate to your profile or settings section
+2. Look for "Change Password" option
+3. Enter your current password
+4. Enter and confirm your new password
+5. Submit to update
+
+<Info>
+Passwords are hashed using bcrypt for security. The system never stores your actual password.
+</Info>
+
+## Using your dashboard
+
+After changing your password, you'll be redirected to your employee dashboard.
+
+### Task dashboard
+
+Your dashboard shows:
+
+- **Assigned tasks**: Work items assigned to you based on your occupation
+- **Task status**: Whether tasks are pending, in progress, or completed
+- **Task details**: Information about each assignment
+- **Priority**: Urgent or standard tasks
+
+### Viewing tasks
+
+<Steps>
+  <Step title="Check your task list">
+    Your dashboard displays all tasks assigned to your occupation.
+  </Step>
+  
+  <Step title="Select a task">
+    Click on a task to view full details including:
+    - Order information
+    - Required materials
+    - Deadline
+    - Special instructions
+  </Step>
+  
+  <Step title="Update task status">
+    Mark tasks as in progress or completed as you work through them.
+  </Step>
+</Steps>
+
+## Session management
+
+The system uses JWT (JSON Web Tokens) for authentication:
+
+- **Access token**: Valid for 15 minutes
+- **Refresh token**: Valid for 7 days
+
+If you're inactive, your session will expire for security:
+- After 15 minutes, you'll need to refresh
+- After 7 days, you'll need to log in again
+
+<Note>
+If you see "Session expired," simply log in again with your credentials.
+</Note>
+
+## Account information
+
+Your employee profile includes:
+
+| Field | Description |
+|-------|-------------|
+| First name | Your first name (Nombres) |
+| Last name | Your last name (Apellidos) |
+| Email | Your login username |
+| Phone | Contact number |
+| Occupation | Your assigned role |
+| Account status | Active and validated |
+
+## Troubleshooting
+
+<Accordion title="I forgot my password">
+  Contact your administrator to reset your password. They can generate a new temporary password and send it to your email. You'll need to change it on next login.
+</Accordion>
+
+<Accordion title="I don't see any tasks">
+  This could mean:
+  - No tasks have been assigned to your occupation yet
+  - There's a filter active on your dashboard
+  - Contact your administrator if you believe tasks should be visible
+</Accordion>
+
+<Accordion title="I can't log in with my credentials">
+  Verify that:
+  - You're using the correct email address
+  - Your caps lock is off when typing the password
+  - You've changed your password if this is after your first login
+  
+  If problems persist, ask your administrator to check your account status.
+</Accordion>
+
+<Accordion title="My session keeps expiring">
+  The access token expires after 15 minutes of use. The system should automatically refresh it. If you're experiencing issues:
+  - Try logging out and back in
+  - Clear your browser cache
+  - Contact support if the problem continues
+</Accordion>

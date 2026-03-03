@@ -1,0 +1,256 @@
+---
+title: Docker deployment
+description: Deploy CALZADO J&R using Docker Compose for a complete development environment with PostgreSQL, FastAPI backend, and React frontend.
+---
+
+Docker Compose is the recommended method for running CALZADO J&R. It orchestrates all three services (database, backend, frontend) with a single command, eliminating the need to install Python, Node.js, or PostgreSQL locally.
+
+## Prerequisites
+
+Ensure you have the following installed:
+
+| Tool | Minimum version | Verify command |
+| --- | --- | --- |
+| Docker | 24+ | `docker --version` |
+| Docker Compose | 2.20+ | `docker compose version` |
+
+## Setup
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone <repository-url>
+    cd calzado-jyr
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Copy the example environment file:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    <Warning>
+      You must change these critical values before starting:
+      - `POSTGRES_PASSWORD` - Set a strong database password
+      - `SECRET_KEY` - Generate a secure JWT signing key
+      - `MAIL_PASSWORD` - Your SMTP application password
+    </Warning>
+
+    Generate a secure `SECRET_KEY`:
+
+    ```bash
+    python -c "import secrets; print(secrets.token_urlsafe(48))"
+    ```
+
+    See the [environment variables reference](/deployment/environment) for all available options.
+  </Step>
+
+  <Step title="Start the services">
+    Build and start all containers in detached mode:
+
+    ```bash
+    docker compose up -d --build
+    ```
+
+    The `--build` flag is required on the first run to build the Docker images. On subsequent runs, you can omit it unless you've changed dependencies.
+
+    Verify all services are running:
+
+    ```bash
+    docker compose ps
+    ```
+  </Step>
+
+  <Step title="Create the initial admin user">
+    Run the admin creation script inside the backend container:
+
+    ```bash
+    docker compose exec be python scripts/create_admin.py
+    ```
+
+    This creates the first administrator account directly in the database.
+  </Step>
+</Steps>
+
+## Access the application
+
+Once all services are running, access:
+
+| Service | URL | Description |
+| --- | --- | --- |
+| Frontend | http://localhost:5173 | React user interface |
+| Backend API | http://localhost:8000 | FastAPI REST API |
+| API Documentation | http://localhost:8000/docs | Interactive Swagger UI |
+| PostgreSQL | localhost:5432 | Direct database connection |
+
+## Service architecture
+
+<CodeGroup>
+```yaml docker-compose.yml
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: calzado_jyr_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - calzado_jyr_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  be:
+    build:
+      context: ./be
+      target: dev
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - ./be:/app
+
+  fe:
+    build:
+      context: ./fe
+      target: dev
+    depends_on:
+      - be
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    volumes:
+      - ./fe:/app
+      - /app/node_modules
+```
+</CodeGroup>
+
+### How it works
+
+**Database (db)**
+- Uses PostgreSQL 17 Alpine (minimal ~10 MB image)
+- Includes healthcheck to ensure database is ready before backend starts
+- Data persists in named volume `calzado_jyr_data`
+- SQL initialization scripts in `db/init/` run on first container creation
+
+**Backend (be)**
+- Waits for database healthcheck with `condition: service_healthy`
+- Mounts source code for hot-reload during development
+- Connects to database using service name `db` (Docker internal DNS)
+
+**Frontend (fe)**
+- Anonymous volume `/app/node_modules` prevents host directory from overwriting installed dependencies
+- Vite HMR (Hot Module Replacement) updates browser instantly on code changes
+
+## Common operations
+
+<CodeGroup>
+```bash View logs
+# All services
+docker compose logs -f
+
+# Backend only
+docker compose logs -f be
+
+# Frontend only
+docker compose logs -f fe
+```
+
+```bash Stop services
+# Stop but preserve data
+docker compose down
+
+# Stop and delete all data (full reset)
+docker compose down -v
+```
+
+```bash Rebuild services
+# Rebuild backend after changing requirements.txt
+docker compose build be
+
+# Rebuild frontend after changing package.json
+docker compose build fe
+
+# Rebuild all services
+docker compose build
+```
+
+```bash Database access
+# Connect to PostgreSQL shell
+docker compose exec db psql -U jyr_user -d calzado_jyr_db
+
+# Run SQL file
+docker compose exec -T db psql -U jyr_user -d calzado_jyr_db < script.sql
+```
+
+```bash Monitor resources
+# View CPU and memory usage
+docker stats
+```
+</CodeGroup>
+
+## Troubleshooting
+
+### Backend fails to connect to database
+
+The healthcheck ensures the database is ready, but if you still see connection errors:
+
+```bash
+# Check database logs
+docker compose logs db
+
+# Verify database is healthy
+docker compose ps
+```
+
+### Port already in use
+
+If you see "port is already allocated", change the conflicting port in `.env`:
+
+```bash .env
+BE_PORT=8001  # Change from default 8000
+FE_PORT=5174  # Change from default 5173
+DB_PORT=5433  # Change from default 5432
+```
+
+### Hot reload not working
+
+Ensure source code is properly mounted:
+
+```bash
+# Restart with fresh build
+docker compose down
+docker compose up -d --build
+```
+
+## Production deployment
+
+For production, modify `docker-compose.yml` to use production targets:
+
+```yaml
+be:
+  build:
+    target: prod  # Change from dev
+  # Remove volume mount
+
+fe:
+  build:
+    target: prod  # Builds with nginx
+  # Remove volume mount
+```
+
+<Warning>
+  In production:
+  - Do not expose database port (`DB_PORT`)
+  - Use strong passwords and keys
+  - Remove source code volume mounts
+  - Configure proper CORS origins
+  - Use reverse proxy (nginx/Traefik) with HTTPS
+</Warning>

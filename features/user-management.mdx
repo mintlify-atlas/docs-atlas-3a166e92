@@ -1,0 +1,241 @@
+---
+title: User management
+description: Registration, authentication, and role-based access control for administrators, employees, and clients
+---
+
+## Overview
+
+CALZADO J&R uses a role-based authentication system with three distinct user types: administrators, employees, and clients. Each role has different registration flows, permissions, and access levels.
+
+<CardGroup cols={3}>
+  <Card title="Administrators" icon="shield-halved">
+    Full system access with user validation and employee creation capabilities
+  </Card>
+  <Card title="Employees" icon="user-tie">
+    Production workers assigned to specific occupations with task management access
+  </Card>
+  <Card title="Clients" icon="user">
+    Customers who can place orders and track their production status
+  </Card>
+</CardGroup>
+
+## User roles
+
+### Administrator
+
+Administrators have complete control over the system and are responsible for managing other users.
+
+**Account creation:**
+- Manually created in the database using the `create_admin.py` script
+- Automatically active and validated upon creation
+- Can create additional administrator accounts
+
+**Capabilities:**
+- Validate pending client registrations
+- Create employee accounts and send credentials via email
+- Manage all system resources
+- Full access to inventory and order management
+
+<Note>
+The first administrator account must be created before the system can be used. Run `docker compose exec be python scripts/create_admin.py` to create the initial admin user.
+</Note>
+
+### Employee
+
+Employees are production workers who handle specific tasks in the shoe manufacturing process.
+
+**Account creation:**
+- Created exclusively by administrators (employees cannot self-register)
+- System generates a secure temporary password
+- Credentials are sent via email automatically
+- Account is created with `is_active=true`, `is_validated=true`, and `must_change_password=true`
+
+**Occupations:**
+- Guarnición (Upper assembly)
+- Solador (Sole attachment)
+- Cortador (Cutting)
+- Emplantillador (Insole preparation)
+
+**Required fields:**
+- Full name (nombres y apellidos)
+- Email address
+- Phone number
+- Occupation
+
+**First login workflow:**
+
+<Steps>
+  <Step title="Receive credentials">
+    Employee receives an email with their temporary password
+  </Step>
+  <Step title="Initial login">
+    Employee logs in with the provided email and password
+  </Step>
+  <Step title="Forced password change">
+    System requires a new password before granting dashboard access
+  </Step>
+  <Step title="Access dashboard">
+    After changing password, employee can view assigned tasks
+  </Step>
+</Steps>
+
+<Info>
+Employees cannot change their occupation or role. Only administrators can modify these settings.
+</Info>
+
+### Client
+
+Clients are customers who register through the public-facing registration form.
+
+**Account creation:**
+- Self-registration through the public signup form
+- Account created with `is_active=false` and `is_validated=false`
+- Requires administrator validation before access is granted
+
+**Required fields:**
+- Full name (nombres y apellidos)
+- Email address (must be unique)
+- Phone number
+- Password
+- Business name (optional)
+
+**Registration workflow:**
+
+<Steps>
+  <Step title="Submit registration">
+    Client completes the registration form at `/api/v1/auth/register`
+  </Step>
+  <Step title="Pending validation">
+    Account is created but remains inactive until validated
+  </Step>
+  <Step title="Administrator review">
+    Administrator reviews and validates the client account
+  </Step>
+  <Step title="Account activation">
+    System sets `is_active=true` and `is_validated=true`, tracking which admin validated and when
+  </Step>
+  <Step title="Login enabled">
+    Client can now log in and access their dashboard
+  </Step>
+</Steps>
+
+<Warning>
+If a client attempts to log in before validation, they will receive a 403 Forbidden error with the message: "Cuenta pendiente de validación por el administrador."
+</Warning>
+
+## Authentication system
+
+The system uses JWT (JSON Web Tokens) for secure authentication.
+
+### Token types
+
+| Token type | Expiration | Purpose |
+|------------|------------|----------|
+| Access token | 15 minutes | Authenticate API requests |
+| Refresh token | 7 days | Generate new access tokens without re-login |
+
+### Login process
+
+<Steps>
+  <Step title="Submit credentials">
+    User sends email and password to `/api/v1/auth/login`
+  </Step>
+  <Step title="Credential validation">
+    System verifies email exists and password matches (using bcrypt)
+  </Step>
+  <Step title="Account status check">
+    System confirms account is active and validated
+  </Step>
+  <Step title="Token generation">
+    System creates access and refresh tokens with user email in payload
+  </Step>
+  <Step title="Role-based redirect">
+    Frontend redirects user to appropriate dashboard based on role
+  </Step>
+</Steps>
+
+### Password security
+
+- All passwords are hashed using bcrypt before storage
+- Minimum password requirements are enforced
+- Password reset tokens expire after 1 hour
+- Reset tokens are single-use only
+
+## Password management
+
+### Change password (authenticated users)
+
+Users who are logged in can change their password at `/api/v1/auth/change-password`.
+
+**Required information:**
+- Current password
+- New password
+
+**Process:**
+1. System verifies the current password is correct
+2. New password is hashed with bcrypt
+3. User's `hashed_password` field is updated
+4. User remains logged in (tokens are not invalidated)
+
+### Forgot password (recovery flow)
+
+Users who forgot their password can request a reset link.
+
+**Request reset:**
+1. User submits email to `/api/v1/auth/forgot-password`
+2. System checks if email exists (but always returns success to prevent email enumeration)
+3. If user exists, system generates a unique UUID token
+4. Token is stored in `password_reset_tokens` table with 1-hour expiration
+5. Reset email is sent with the token
+
+**Complete reset:**
+1. User clicks link in email and provides new password to `/api/v1/auth/reset-password`
+2. System validates token is not expired and not already used
+3. Password is updated and token is marked as used
+4. User can now log in with the new password
+
+<Info>
+The system always responds with "Si el email está registrado, recibirás un enlace de recuperación" even if the email doesn't exist. This prevents attackers from discovering which emails are registered.
+</Info>
+
+## Token refresh
+
+When an access token expires, clients can obtain a new one without requiring the user to log in again.
+
+**Endpoint:** `/api/v1/auth/refresh`
+
+**Process:**
+1. Client sends the refresh token
+2. System validates token type is "refresh" and hasn't expired
+3. System extracts user email from token payload
+4. System verifies user still exists and is active
+5. New access and refresh tokens are generated
+
+<Note>
+Both the access token and refresh token are rotated on each refresh for enhanced security.
+</Note>
+
+## User profile
+
+Authenticated users can retrieve their profile information at `/api/v1/users/me`.
+
+**Response includes:**
+- User ID (UUID)
+- Email address
+- Full name
+- Phone number
+- Role name (admin, employee, or client)
+- Account status (is_active, is_validated)
+- Business name (clients only)
+- Occupation (employees only)
+- Account creation and update timestamps
+
+## Validation tracking
+
+When an administrator validates a client account, the system records:
+- `validated_by`: UUID of the administrator who approved the account
+- `validated_at`: Timestamp of when validation occurred
+- `is_validated`: Set to `true`
+- `is_active`: Set to `true`
+
+This audit trail helps track who approved each client registration.

@@ -1,0 +1,226 @@
+---
+title: Inventory management
+description: Track and manage raw materials, supplies, and finished products for shoe manufacturing
+---
+
+## Overview
+
+The inventory management system helps CALZADO J&R track raw materials, components, and finished products throughout the production process. This ensures materials are available when needed and provides visibility into stock levels.
+
+<Note>
+Inventory management features are currently in development. The information below describes the planned functionality based on the system design.
+</Note>
+
+## Inventory categories
+
+The system will track three main types of inventory:
+
+<CardGroup cols={3}>
+  <Card title="Raw materials" icon="layer-group">
+    Leather, synthetic materials, fabrics, and other base materials
+  </Card>
+  <Card title="Components" icon="puzzle-piece">
+    Soles, laces, insoles, thread, adhesives, and hardware
+  </Card>
+  <Card title="Finished products" icon="shoe-prints">
+    Completed shoes ready for delivery to clients
+  </Card>
+</CardGroup>
+
+## Planned features
+
+### Stock tracking
+
+The inventory system will maintain real-time counts of all materials and products:
+
+**Key information:**
+- Item name and description
+- SKU or reference number
+- Current quantity in stock
+- Unit of measurement (pieces, meters, kilograms, etc.)
+- Minimum stock level (reorder point)
+- Storage location
+- Supplier information
+- Unit cost and total value
+
+### Stock movements
+
+All inventory changes will be logged to create an audit trail:
+
+**Movement types:**
+- **Incoming:** New purchases, returns from production, customer returns
+- **Outgoing:** Materials allocated to production orders, finished products delivered to clients
+- **Adjustments:** Corrections for damaged goods, inventory counts, or discrepancies
+- **Transfers:** Movement between storage locations or production areas
+
+**Movement records will include:**
+- Date and time of movement
+- Type of movement (incoming, outgoing, adjustment, transfer)
+- Quantity affected
+- Reason or reference (e.g., purchase order, production order, quality issue)
+- User who recorded the movement
+- Before and after quantities
+
+### Low stock alerts
+
+The system will automatically notify administrators when inventory falls below defined thresholds:
+
+<Steps>
+  <Step title="Define minimum levels">
+    Administrator sets minimum stock quantity for each item
+  </Step>
+  <Step title="Monitor stock">
+    System checks current quantities against minimums
+  </Step>
+  <Step title="Generate alerts">
+    When stock falls below minimum, alert is created
+  </Step>
+  <Step title="Notify users">
+    Dashboard displays low stock warnings and can send email notifications
+  </Step>
+</Steps>
+
+<Info>
+Administrators will be able to configure whether low stock alerts are sent via email, shown only in the dashboard, or both.
+</Info>
+
+### Purchase order management
+
+When materials need to be reordered:
+
+1. **Create purchase order:** Administrator creates order for needed materials
+2. **Submit to supplier:** Order details are sent to the supplier
+3. **Track order status:** Monitor whether order is pending, in transit, or received
+4. **Receive shipment:** When materials arrive, quantities are added to inventory
+5. **Verify receipt:** Compare received quantities against order to identify discrepancies
+
+### Production allocation
+
+Materials will be allocated to specific production orders:
+
+**Allocation process:**
+1. Production order is created with list of required materials
+2. System checks if sufficient quantities are available
+3. If available, materials are reserved for that order
+4. Reserved materials are deducted from available stock (but not total stock)
+5. When production is complete, reserved materials are fully consumed
+6. If production is cancelled, materials are released back to available stock
+
+<Warning>
+If a production order requires materials that are out of stock, the order cannot be started until inventory is replenished.
+</Warning>
+
+### Inventory reports
+
+Administrators will be able to generate various inventory reports:
+
+| Report type | Purpose |
+|-------------|----------|
+| Current stock levels | View all items and their quantities at a glance |
+| Stock valuation | Calculate total value of inventory on hand |
+| Movement history | Audit trail of all stock changes over time |
+| Low stock items | List of items below reorder point |
+| Usage by production order | See which materials were used for specific orders |
+| Supplier performance | Track delivery times and order accuracy by supplier |
+
+## Role-based access
+
+Different user roles will have different inventory capabilities:
+
+### Administrator
+
+- Full inventory management access
+- Create, edit, and delete inventory items
+- Record all types of stock movements
+- Create and manage purchase orders
+- Configure minimum stock levels and alerts
+- Generate and export inventory reports
+- View complete movement history
+
+### Employee
+
+- View materials allocated to their assigned tasks
+- Record consumption of materials during production
+- Report material shortages or quality issues
+- View current stock levels (read-only)
+
+### Client
+
+- No direct inventory access
+- Can view available finished products in the catalog
+- Order status may show if waiting for materials
+
+<Info>
+Employee access to inventory is limited to materials relevant to their work. They cannot view financial information like costs or valuations.
+</Info>
+
+## Integration with production
+
+The inventory system will be tightly integrated with order and task management:
+
+**Material flow:**
+
+<Steps>
+  <Step title="Order placed">
+    Client places order for shoes
+  </Step>
+  <Step title="Materials checked">
+    System verifies sufficient materials are in stock
+  </Step>
+  <Step title="Materials reserved">
+    Required quantities are allocated to the production order
+  </Step>
+  <Step title="Tasks assigned">
+    Production tasks are assigned to employees
+  </Step>
+  <Step title="Materials consumed">
+    As work progresses, materials are marked as used
+  </Step>
+  <Step title="Product completed">
+    Finished shoe is added to finished goods inventory
+  </Step>
+  <Step title="Product delivered">
+    Finished shoe is removed from inventory when delivered to client
+  </Step>
+</Steps>
+
+## Data tracking
+
+The inventory database will store:
+
+**Items table:**
+- Unique identifier (UUID)
+- Item name and description
+- SKU/reference code
+- Category (raw material, component, finished product)
+- Unit of measurement
+- Current quantity
+- Minimum stock level
+- Unit cost
+- Supplier reference
+- Created and updated timestamps
+- Soft delete support
+
+**Movements table:**
+- Unique identifier (UUID)
+- Item reference
+- Movement type
+- Quantity
+- Date and time
+- User who recorded it
+- Related order or task reference
+- Notes or reason
+- Before and after quantities
+
+**Purchase orders table:**
+- Order number
+- Supplier information
+- Order date
+- Expected delivery date
+- Status (pending, shipped, received, cancelled)
+- Line items with quantities and costs
+- Receiving notes
+
+<Note>
+All inventory tables will use soft deletes to maintain historical accuracy even after items are discontinued.
+</Note>

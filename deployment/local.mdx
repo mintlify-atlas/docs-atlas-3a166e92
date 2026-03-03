@@ -1,0 +1,288 @@
+---
+title: Local development setup
+description: Set up CALZADO J&R for local development without Docker using Python virtual environments and Node.js.
+---
+
+This guide covers manual installation for local development. If you prefer an automated setup, use the [Docker deployment method](/deployment/docker) instead.
+
+## Prerequisites
+
+Install the following on your system:
+
+| Tool | Minimum version | Verify command |
+| --- | --- | --- |
+| Python | 3.12+ | `python --version` |
+| Node.js | 20 LTS+ | `node --version` |
+| pnpm | 9+ | `pnpm --version` |
+| PostgreSQL | 17+ | `psql --version` |
+
+## Database setup
+
+<Steps>
+  <Step title="Create PostgreSQL database">
+    Connect to PostgreSQL and create the database:
+
+    ```sql
+    CREATE DATABASE calzado_jyr_db;
+    CREATE USER jyr_user WITH PASSWORD 'your_secure_password';
+    GRANT ALL PRIVILEGES ON DATABASE calzado_jyr_db TO jyr_user;
+    ```
+  </Step>
+
+  <Step title="Run initialization scripts">
+    Execute the SQL initialization scripts in order:
+
+    ```bash
+    psql -U jyr_user -d calzado_jyr_db -f db/init/01_create_tables.sql
+    psql -U jyr_user -d calzado_jyr_db -f db/init/02_triggers_and_indexes.sql
+    ```
+
+    These scripts create:
+    - `roles` and `users` tables with proper indexes
+    - Initial roles (admin, employee, client)
+    - Triggers for automatic `updated_at` timestamps
+    - Partial indexes for soft deletes
+  </Step>
+</Steps>
+
+## Backend setup
+
+<Steps>
+  <Step title="Navigate to backend directory">
+    ```bash
+    cd be
+    ```
+  </Step>
+
+  <Step title="Create virtual environment">
+    <CodeGroup>
+    ```bash Linux/macOS
+    python -m venv .venv
+    source .venv/bin/activate
+    ```
+
+    ```bash Windows (PowerShell)
+    python -m venv .venv
+    .venv\Scripts\Activate.ps1
+    ```
+
+    ```bash Windows (Command Prompt)
+    python -m venv .venv
+    .venv\Scripts\activate.bat
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    This installs:
+    - **FastAPI** - Modern async web framework
+    - **SQLAlchemy 2.0** - ORM with async support
+    - **Alembic** - Database migrations
+    - **Pydantic** - Data validation
+    - **python-jose** - JWT token handling
+    - **bcrypt** - Password hashing
+    - **uvicorn** - ASGI server
+  </Step>
+
+  <Step title="Configure environment variables">
+    Copy and edit the environment file:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Update `DATABASE_URL` to point to your local PostgreSQL:
+
+    ```bash .env
+    DATABASE_URL=postgresql://jyr_user:your_secure_password@localhost:5432/calzado_jyr_db
+    ```
+
+    See the [environment variables reference](/deployment/environment) for all configuration options.
+  </Step>
+
+  <Step title="Create admin user">
+    Run the admin creation script:
+
+    ```bash
+    python scripts/create_admin.py
+    ```
+  </Step>
+</Steps>
+
+## Frontend setup
+
+<Steps>
+  <Step title="Navigate to frontend directory">
+    ```bash
+    cd fe
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+
+    This installs:
+    - **React 18+** - UI library
+    - **Vite** - Fast build tool with HMR
+    - **TypeScript** - Type safety
+    - **TailwindCSS 4+** - Utility-first CSS
+    - **React Router** - Client-side routing
+    - **Axios** - HTTP client
+  </Step>
+
+  <Step title="Configure environment variables">
+    Copy and edit the environment file:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Set the backend API URL:
+
+    ```bash .env
+    VITE_API_URL=http://localhost:8000
+    ```
+  </Step>
+</Steps>
+
+## Running the application
+
+You need two terminal windows running simultaneously.
+
+### Terminal 1: Backend
+
+```bash
+cd be
+source .venv/bin/activate  # Linux/macOS
+uvicorn app.main:app --reload
+```
+
+The backend will be available at:
+- API: http://localhost:8000
+- Interactive docs: http://localhost:8000/docs
+
+### Terminal 2: Frontend
+
+```bash
+cd fe
+npm run dev
+```
+
+The frontend will be available at:
+- App: http://localhost:5173
+
+## Development workflow
+
+### Running tests
+
+<CodeGroup>
+```bash Backend tests
+cd be
+source .venv/bin/activate
+pytest
+```
+
+```bash Frontend tests
+cd fe
+npm run test
+```
+</CodeGroup>
+
+### Database migrations
+
+When you modify models, create and apply migrations:
+
+```bash
+cd be
+source .venv/bin/activate
+
+# Generate migration from model changes
+alembic revision --autogenerate -m "Add column to users"
+
+# Apply migrations
+alembic upgrade head
+
+# Rollback last migration
+alembic downgrade -1
+```
+
+### Code formatting
+
+<CodeGroup>
+```bash Backend (Black + isort)
+cd be
+black .
+isort .
+```
+
+```bash Frontend (Prettier)
+cd fe
+npm run format
+```
+</CodeGroup>
+
+## Troubleshooting
+
+### Cannot connect to PostgreSQL
+
+Verify PostgreSQL is running:
+
+```bash
+# Linux
+sudo systemctl status postgresql
+
+# macOS
+brew services list
+
+# Windows
+# Check Services app for PostgreSQL service
+```
+
+Test connection:
+
+```bash
+psql -U jyr_user -d calzado_jyr_db -h localhost
+```
+
+### Module not found errors
+
+Ensure virtual environment is activated and dependencies are installed:
+
+```bash
+cd be
+source .venv/bin/activate
+pip list  # Verify packages are installed
+```
+
+### CORS errors in browser
+
+Verify `FRONTEND_URL` in backend `.env` matches your frontend URL:
+
+```bash be/.env
+FRONTEND_URL=http://localhost:5173
+```
+
+### Port already in use
+
+Change the port in your run command:
+
+```bash
+# Backend on different port
+uvicorn app.main:app --reload --port 8001
+
+# Frontend on different port
+npm run dev -- --port 5174
+```
+
+## Next steps
+
+After setup, learn about:
+- [Environment variables reference](/deployment/environment)
+- [Authentication system](/concepts/authentication)
+- [Role-based access control](/concepts/roles)

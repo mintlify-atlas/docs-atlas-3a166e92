@@ -1,0 +1,876 @@
+---
+title: Common issues and solutions
+description: Troubleshooting guide for common problems in CALZADO J&R development and deployment
+---
+
+## Overview
+
+This guide covers the most common issues developers encounter when working with CALZADO J&R, along with actionable solutions. Issues are organized by category: Docker, database, backend, frontend, and authentication.
+
+## Docker issues
+
+### Container won't start
+
+<AccordionGroup>
+  <Accordion title="Error: 'port is already allocated'">
+    **Symptom:**
+    ```bash
+    Error response from daemon: driver failed programming external connectivity:
+    Bind for 0.0.0.0:5432 failed: port is already allocated
+    ```
+
+    **Cause:** Another service (PostgreSQL, another Docker container) is using the port.
+
+    **Solution:**
+
+    <Steps>
+      <Step title="Find the process using the port">
+        ```bash
+        # Linux/macOS
+        sudo lsof -i :5432
+        
+        # Or check all mapped ports
+        docker ps
+        ```
+      </Step>
+
+      <Step title="Stop the conflicting service">
+        ```bash
+        # Stop local PostgreSQL
+        sudo systemctl stop postgresql
+        
+        # Or kill the process
+        sudo kill -9 <PID>
+        ```
+      </Step>
+
+      <Step title="Change port in .env (alternative)">
+        Edit `.env`:
+        ```bash
+        DB_PORT=5433  # Use different port
+        BE_PORT=8001
+        FE_PORT=5174
+        ```
+
+        Then restart:
+        ```bash
+        docker compose up -d
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Error: 'no configuration file provided'">
+    **Symptom:**
+    ```bash
+    no configuration file provided: not found
+    ```
+
+    **Cause:** Running `docker compose` from wrong directory.
+
+    **Solution:**
+    ```bash
+    cd /path/to/calzado-jyr  # Navigate to project root
+    docker compose up -d
+    ```
+
+    Verify you're in the correct directory:
+    ```bash
+    ls docker-compose.yml  # Should exist
+    ```
+  </Accordion>
+
+  <Accordion title="Backend shows 'connection refused' to database">
+    **Symptom:**
+    ```bash
+    sqlalchemy.exc.OperationalError: could not connect to server: Connection refused
+    ```
+
+    **Cause:** Backend started before PostgreSQL was ready.
+
+    **Solution:**
+
+    <Tabs>
+      <Tab title="Check healthcheck">
+        Verify the database healthcheck is working:
+        ```bash
+        docker compose ps
+        ```
+
+        Look for `db` service status. Should show `healthy`.
+
+        If `unhealthy`, check logs:
+        ```bash
+        docker compose logs db
+        ```
+      </Tab>
+
+      <Tab title="Manual restart">
+        ```bash
+        docker compose restart be
+        ```
+
+        The backend will retry connection with `pool_pre_ping=True` (configured in `be/app/database.py:15`).
+      </Tab>
+
+      <Tab title="Full reset">
+        ```bash
+        docker compose down
+        docker compose up -d
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+
+  <Accordion title="Changes to code not reflecting in container">
+    **Symptom:** Modified Python or React code doesn't appear when refreshing.
+
+    **Cause:** Docker volume not mounted, or cached build layers.
+
+    **Solution:**
+
+    <Steps>
+      <Step title="Verify volume mounts">
+        Check `docker-compose.yml` has:
+        ```yaml
+        volumes:
+          - ./be:/app        # Backend hot-reload
+          - ./fe:/app        # Frontend hot-reload
+          - /app/node_modules  # Protect node_modules
+        ```
+      </Step>
+
+      <Step title="Rebuild without cache">
+        ```bash
+        docker compose build --no-cache be
+        docker compose up -d
+        ```
+      </Step>
+
+      <Step title="Check file permissions (Linux)">
+        If files are owned by root inside container:
+        ```bash
+        sudo chown -R $USER:$USER ./be ./fe
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+</AccordionGroup>
+
+### Environment variable issues
+
+<Accordion title="Error: 'SECRET_KEY' field required">
+  **Symptom:**
+  ```bash
+  pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+  SECRET_KEY
+    Field required [type=missing, input_value={...}]
+  ```
+
+  **Cause:** `.env` file missing or not loaded.
+
+  **Solution:**
+
+  <Steps>
+    <Step title="Create .env file">
+      ```bash
+      cp .env.example .env
+      ```
+    </Step>
+
+    <Step title="Generate SECRET_KEY">
+      ```bash
+      python -c "import secrets; print(secrets.token_urlsafe(48))"
+      ```
+
+      Paste the output into `.env`:
+      ```bash
+      SECRET_KEY=your_generated_key_here
+      ```
+    </Step>
+
+    <Step title="Restart services">
+      ```bash
+      docker compose down
+      docker compose up -d
+      ```
+    </Step>
+  </Steps>
+
+  <Warning>
+  Never commit `.env` to git. It should be in `.gitignore`.
+  </Warning>
+</Accordion>
+
+## Database issues
+
+### Migration problems
+
+<AccordionGroup>
+  <Accordion title="Alembic: 'Target database is not up to date'">
+    **Symptom:**
+    ```bash
+    sqlalchemy.exc.ProgrammingError: relation "users" does not exist
+    ```
+
+    **Cause:** Database schema doesn't match SQLAlchemy models.
+
+    **Solution:**
+
+    <Tabs>
+      <Tab title="Run migrations">
+        ```bash
+        docker compose exec be alembic upgrade head
+        ```
+
+        Verify current revision:
+        ```bash
+        docker compose exec be alembic current
+        ```
+      </Tab>
+
+      <Tab title="Fresh database (dev only)">
+        <Warning>
+        This deletes ALL data. Only for development.
+        </Warning>
+
+        ```bash
+        docker compose down -v  # Delete volumes
+        docker compose up -d
+        docker compose exec be python scripts/create_admin.py
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+
+  <Accordion title="Cannot create admin: 'Role admin does not exist'">
+    **Symptom:**
+    ```bash
+    ❌ Error: El rol 'admin' no existe en la base de datos.
+    ```
+
+    **Cause:** Initialization scripts didn't run.
+
+    **Solution:**
+
+    <Steps>
+      <Step title="Check if scripts ran">
+        ```bash
+        docker compose exec db psql -U jyr_user -d calzado_jyr_db -c "SELECT * FROM roles;"
+        ```
+
+        Should show 3 roles (admin, employee, client).
+      </Step>
+
+      <Step title="Manually run init scripts">
+        If roles table is empty:
+        ```bash
+        docker compose exec db psql -U jyr_user -d calzado_jyr_db -f /docker-entrypoint-initdb.d/01_create_tables.sql
+        docker compose exec db psql -U jyr_user -d calzado_jyr_db -f /docker-entrypoint-initdb.d/02_triggers_and_indexes.sql
+        ```
+      </Step>
+
+      <Step title="Create admin">
+        ```bash
+        docker compose exec be python scripts/create_admin.py
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Database connection pool exhausted">
+    **Symptom:**
+    ```bash
+    sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 10 reached
+    ```
+
+    **Cause:** Database connections not being closed properly.
+
+    **Solution:**
+
+    Check your code always closes sessions (example from `be/app/database.py:19`):
+
+    ```python
+    def get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()  # Always close!
+    ```
+
+    Or increase pool size temporarily:
+
+    ```python
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_size=10,        # Default is 5
+        max_overflow=20,    # Default is 10
+    )
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Data integrity issues
+
+<Accordion title="Constraint violation: email already exists">
+  **Symptom:**
+  ```bash
+  sqlalchemy.exc.IntegrityError: duplicate key value violates unique constraint "users_email_key"
+  ```
+
+  **Cause:** Trying to create user with existing email.
+
+  **Solution:**
+
+  Always check if email exists before creating:
+
+  ```python
+  from sqlalchemy import select
+  from app.models.user import User
+
+  stmt = select(User).where(
+      User.email == email,
+      User.deleted_at.is_(None)  # Don't forget soft-delete!
+  )
+  existing_user = db.execute(stmt).scalar_one_or_none()
+
+  if existing_user:
+      raise HTTPException(status_code=400, detail="Email ya registrado")
+  ```
+</Accordion>
+
+## Backend (FastAPI) issues
+
+### Import errors
+
+<AccordionGroup>
+  <Accordion title="ModuleNotFoundError: No module named 'app'">
+    **Symptom:**
+    ```bash
+    ModuleNotFoundError: No module named 'app'
+    ```
+
+    **Cause:** Running scripts from wrong directory.
+
+    **Solution:**
+
+    <Tabs>
+      <Tab title="In Docker">
+        Always exec into container:
+        ```bash
+        docker compose exec be python scripts/create_admin.py
+        ```
+
+        Not:
+        ```bash
+        cd be/scripts
+        python create_admin.py  # ❌ Wrong
+        ```
+      </Tab>
+
+      <Tab title="Local development">
+        Run from `be/` directory:
+        ```bash
+        cd be
+        source .venv/bin/activate
+        python scripts/create_admin.py
+        ```
+
+        Or add to PYTHONPATH:
+        ```bash
+        export PYTHONPATH="${PYTHONPATH}:/path/to/calzado-jyr/be"
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+
+  <Accordion title="Pydantic validation errors">
+    **Symptom:**
+    ```bash
+    pydantic.error_wrappers.ValidationError: 1 validation error for UserCreate
+    email
+      field required (type=value_error.missing)
+    ```
+
+    **Cause:** Request body missing required fields.
+
+    **Solution:**
+
+    Check the schema definition (e.g., `be/app/schemas/user.py`):
+
+    ```python
+    class UserCreate(BaseModel):
+        email: str              # Required
+        password: str           # Required
+        full_name: str          # Required
+        phone: str | None = None  # Optional
+    ```
+
+    Ensure your API request includes all required fields:
+
+    ```json
+    {
+      "email": "user@example.com",
+      "password": "SecurePass123!",
+      "full_name": "John Doe"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Authentication errors
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized: Could not validate credentials">
+    **Symptom:**
+    Protected endpoints return 401 even with valid token.
+
+    **Cause:** Token expired or SECRET_KEY mismatch.
+
+    **Solution:**
+
+    <Steps>
+      <Step title="Verify token is valid">
+        Decode the JWT at [jwt.io](https://jwt.io) and check:
+        - `exp` (expiration) is in the future
+        - Token was signed with same SECRET_KEY
+      </Step>
+
+      <Step title="Check SECRET_KEY consistency">
+        Ensure `.env` SECRET_KEY matches between restarts:
+        ```bash
+        docker compose exec be env | grep SECRET_KEY
+        ```
+
+        If different, tokens issued before restart are invalid.
+      </Step>
+
+      <Step title="Increase token expiry (dev only)">
+        In `.env`:
+        ```bash
+        ACCESS_TOKEN_EXPIRE_MINUTES=60  # Default is 15
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Password hash verification fails">
+    **Symptom:**
+    Login always fails with "Credenciales inválidas".
+
+    **Cause:** bcrypt version mismatch or incorrect hashing.
+
+    **Solution:**
+
+    Verify hashing function (defined in `be/app/utils/security.py`):
+
+    ```python
+    from passlib.context import CryptContext
+
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+    def hash_password(password: str) -> str:
+        return pwd_context.hash(password)
+
+    def verify_password(plain_password: str, hashed_password: str) -> bool:
+        return pwd_context.verify(plain_password, hashed_password)
+    ```
+
+    Test manually:
+    ```python
+    from app.utils.security import hash_password, verify_password
+
+    hashed = hash_password("Test123!")
+    print(verify_password("Test123!", hashed))  # Should be True
+    ```
+  </Accordion>
+
+  <Accordion title="CORS errors from frontend">
+    **Symptom:**
+    ```
+    Access to XMLHttpRequest blocked by CORS policy:
+    No 'Access-Control-Allow-Origin' header is present
+    ```
+
+    **Cause:** Frontend URL not in CORS whitelist.
+
+    **Solution:**
+
+    <Steps>
+      <Step title="Check FRONTEND_URL in .env">
+        ```bash
+        FRONTEND_URL=http://localhost:5173
+        ```
+
+        Must match the URL your browser shows.
+      </Step>
+
+      <Step title="Verify CORS middleware in main.py">
+        Should have (configured in `be/app/main.py`):
+
+        ```python
+        from fastapi.middleware.cors import CORSMiddleware
+        from app.config import settings
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[settings.FRONTEND_URL],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        ```
+      </Step>
+
+      <Step title="Allow all origins (dev only)">
+        <Warning>
+        Never use in production!
+        </Warning>
+
+        ```python
+        allow_origins=["*"],
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+</AccordionGroup>
+
+## Frontend (React) issues
+
+### Development server
+
+<AccordionGroup>
+  <Accordion title="Vite: 'Failed to resolve import'">
+    **Symptom:**
+    ```bash
+    Failed to resolve import "@/components/Button" from "src/pages/Login.tsx"
+    ```
+
+    **Cause:** Path alias not configured or incorrect.
+
+    **Solution:**
+
+    Configure path aliases in `fe/vite.config.ts`:
+
+    ```typescript
+    import { defineConfig } from 'vite'
+    import react from '@vitejs/plugin-react'
+    import path from 'path'
+
+    export default defineConfig({
+      plugins: [react()],
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, './src'),
+        },
+      },
+    })
+    ```
+
+    And `fe/tsconfig.json`:
+
+    ```json
+    {
+      "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+          "@/*": ["./src/*"]
+        }
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="API requests fail with 'Network Error'">
+    **Symptom:**
+    ```
+    AxiosError: Network Error
+    ```
+
+    **Cause:** Wrong API URL or backend not running.
+
+    **Solution:**
+
+    <Steps>
+      <Step title="Check VITE_API_URL">
+        In `.env`:
+        ```bash
+        VITE_API_URL=http://localhost:8000
+        ```
+
+        Verify in browser console:
+        ```javascript
+        console.log(import.meta.env.VITE_API_URL)
+        ```
+      </Step>
+
+      <Step title="Verify backend is running">
+        ```bash
+        curl http://localhost:8000/docs
+        ```
+
+        Should return Swagger UI HTML.
+      </Step>
+
+      <Step title="Restart Vite after .env changes">
+        ```bash
+        docker compose restart fe
+        ```
+
+        Vite only reads `.env` at startup.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="White screen after build">
+    **Symptom:**
+    Production build shows blank page with no errors.
+
+    **Cause:** Router base path mismatch or missing error boundary.
+
+    **Solution:**
+
+    <Tabs>
+      <Tab title="Check base path">
+        If deploying to subdirectory (e.g., `/app/`):
+
+        ```typescript
+        // vite.config.ts
+        export default defineConfig({
+          base: '/app/',  // Must match deployment path
+        })
+        ```
+
+        ```tsx
+        // main.tsx
+        <BrowserRouter basename="/app">
+          <App />
+        </BrowserRouter>
+        ```
+      </Tab>
+
+      <Tab title="Add error boundary">
+        Wrap app with error boundary:
+
+        ```tsx
+        import { ErrorBoundary } from 'react-error-boundary'
+
+        function ErrorFallback({error}) {
+          return (
+            <div>
+              <h1>Error:</h1>
+              <pre>{error.message}</pre>
+            </div>
+          )
+        }
+
+        <ErrorBoundary FallbackComponent={ErrorFallback}>
+          <App />
+        </ErrorBoundary>
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+## Email issues
+
+<Accordion title="SMTP authentication failed">
+  **Symptom:**
+  ```bash
+  aiosmtplib.errors.SMTPAuthenticationError: (535, b'5.7.8 Username and Password not accepted')
+  ```
+
+  **Cause:** Invalid SMTP credentials or App Password required.
+
+  **Solution:**
+
+  <Steps>
+    <Step title="For Gmail: Generate App Password">
+      1. Go to [Google Account Security](https://myaccount.google.com/security)
+      2. Enable 2-Step Verification
+      3. Go to App Passwords
+      4. Generate password for "Mail"
+      5. Use this password in `.env`:
+
+      ```bash
+      MAIL_USERNAME=your-email@gmail.com
+      MAIL_PASSWORD=your_app_password_here  # Not your regular password!
+      ```
+    </Step>
+
+    <Step title="Test SMTP connection">
+      ```python
+      import asyncio
+      import aiosmtplib
+      from email.message import EmailMessage
+
+      async def test_smtp():
+          message = EmailMessage()
+          message["From"] = "noreply@calzadojyr.com"
+          message["To"] = "test@example.com"
+          message["Subject"] = "Test"
+          message.set_content("Test email")
+
+          await aiosmtplib.send(
+              message,
+              hostname="smtp.gmail.com",
+              port=587,
+              username="your-email@gmail.com",
+              password="your_app_password",
+              start_tls=True,
+          )
+
+      asyncio.run(test_smtp())
+      ```
+    </Step>
+  </Steps>
+</Accordion>
+
+## Performance issues
+
+<AccordionGroup>
+  <Accordion title="Slow database queries">
+    **Symptom:**
+    API endpoints take several seconds to respond.
+
+    **Cause:** Missing indexes or N+1 queries.
+
+    **Solution:**
+
+    <Steps>
+      <Step title="Enable SQL logging">
+        In `be/app/database.py:13`:
+        ```python
+        engine = create_engine(
+            settings.DATABASE_URL,
+            echo=True,  # Log all SQL queries
+        )
+        ```
+
+        Restart and check logs for slow queries.
+      </Step>
+
+      <Step title="Use selectin loading">
+        Avoid N+1 queries with relationships:
+        ```python
+        # In model definition
+        role = relationship("Role", lazy="selectin")
+        ```
+
+        Or in query:
+        ```python
+        from sqlalchemy.orm import selectinload
+
+        stmt = select(User).options(selectinload(User.role))
+        ```
+      </Step>
+
+      <Step title="Add missing indexes">
+        If querying by a field frequently, add index:
+        ```sql
+        CREATE INDEX idx_users_business_name ON users(business_name)
+        WHERE deleted_at IS NULL;
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Docker build takes too long">
+    **Symptom:**
+    `docker compose build` takes 5+ minutes.
+
+    **Cause:** Rebuilding all layers every time.
+
+    **Solution:**
+
+    <Tabs>
+      <Tab title="Use BuildKit">
+        ```bash
+        export DOCKER_BUILDKIT=1
+        docker compose build
+        ```
+
+        BuildKit caches better and builds in parallel.
+      </Tab>
+
+      <Tab title="Optimize Dockerfile layer order">
+        Copy only `requirements.txt` first:
+
+        ```dockerfile
+        # Install dependencies (cached unless requirements.txt changes)
+        COPY requirements.txt .
+        RUN pip install -r requirements.txt
+
+        # Copy code (changes frequently)
+        COPY . .
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+## Getting help
+
+### Debugging checklist
+
+Before asking for help, verify:
+
+<Steps>
+  <Step title="Check all services are running">
+    ```bash
+    docker compose ps
+    ```
+    All should show `Up` and `healthy`.
+  </Step>
+
+  <Step title="Review recent logs">
+    ```bash
+    docker compose logs --tail=50 be
+    docker compose logs --tail=50 db
+    ```
+  </Step>
+
+  <Step title="Verify environment variables">
+    ```bash
+    docker compose exec be env
+    ```
+  </Step>
+
+  <Step title="Test database connection">
+    ```bash
+    docker compose exec db psql -U jyr_user -d calzado_jyr_db -c "SELECT version();"
+    ```
+  </Step>
+
+  <Step title="Check API health">
+    ```bash
+    curl http://localhost:8000/docs
+    ```
+  </Step>
+</Steps>
+
+### Useful commands
+
+| Task | Command |
+|------|--------|
+| View all logs | `docker compose logs -f` |
+| View specific service | `docker compose logs -f be` |
+| Shell into container | `docker compose exec be bash` |
+| PostgreSQL shell | `docker compose exec db psql -U jyr_user -d calzado_jyr_db` |
+| Restart service | `docker compose restart be` |
+| Rebuild service | `docker compose build --no-cache be` |
+| Check disk usage | `docker system df` |
+| Clean up | `docker system prune -a` |
+
+### Logs location
+
+- **Backend logs:** `docker compose logs be`
+- **Database logs:** `docker compose logs db`
+- **Frontend logs:** `docker compose logs fe`
+- **Nginx logs (prod):** Inside container at `/var/log/nginx/`
+
+<Info>
+For issues not covered here, check the API documentation at `http://localhost:8000/docs` or review the source code in the repository.
+</Info>

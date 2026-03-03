@@ -1,0 +1,260 @@
+---
+title: Client workflow
+description: Guide for clients to register, get validated, and place orders with CALZADO J&R
+---
+
+As a client of CALZADO J&R, you can register yourself, browse the catalog, and place orders once your account is validated. This guide walks you through the complete process.
+
+## Registration process
+
+<Info>
+Clients can register freely through the public registration form. You don't need an invitation or administrator approval to create an account.
+</Info>
+
+### Creating your account
+
+<Steps>
+  <Step title="Navigate to registration page">
+    Go to the CALZADO J&R application at `http://localhost:5173` (or your company's deployment URL) and click on "Register" or "Sign Up".
+  </Step>
+  
+  <Step title="Fill in the registration form">
+    Complete all required fields:
+    - **First name** (Nombres): Your first name
+    - **Last name** (Apellidos): Your last name
+    - **Phone**: Your contact phone number
+    - **Email**: Your email address (will be your username)
+    - **Password**: Choose a secure password
+    - **Business name** (optional): If you're ordering for a business, enter its name
+  </Step>
+  
+  <Step title="Submit your registration">
+    Click the submit button. The system creates your account with:
+    - `is_validated=False` (pending validation)
+    - `is_active=False` (inactive until validated)
+  </Step>
+  
+  <Step title="Confirmation message">
+    You'll see: "Account created successfully. Pending validation by administrator."
+  </Step>
+</Steps>
+
+<Note>
+Your account is created immediately, but you cannot log in until an administrator validates it.
+</Note>
+
+## Waiting for validation
+
+After registering, your account enters a pending state:
+
+1. An administrator receives notification of your registration
+2. They review your account information
+3. They validate your account when approved
+4. Your account becomes active: `is_validated=True` and `is_active=True`
+
+<Accordion title="How long does validation take?">
+  Validation time depends on administrator availability. Typically:
+  - During business hours: Within a few hours
+  - Outside business hours: By next business day
+  
+  If you haven't heard back within 24 hours, contact CALZADO J&R directly.
+</Accordion>
+
+<Accordion title="Why is validation required?">
+  Validation ensures:
+  - Account authenticity
+  - Business relationship verification
+  - Accurate contact information
+  - Prevention of spam or fraudulent accounts
+</Accordion>
+
+## First login
+
+Once your account is validated, you can log in:
+
+<Steps>
+  <Step title="Go to login page">
+    Navigate to the CALZADO J&R login page.
+  </Step>
+  
+  <Step title="Enter your credentials">
+    - **Email**: The email address you registered with
+    - **Password**: The password you created during registration
+  </Step>
+  
+  <Step title="Automatic redirect">
+    After successful login, the system detects your role as a client and redirects you to your client dashboard.
+  </Step>
+</Steps>
+
+<Info>
+Unlike employees, you do not need to change your password on first login since you created it yourself during registration.
+</Info>
+
+## Using your dashboard
+
+Your client dashboard provides access to:
+
+### Product catalog
+
+- Browse available footwear products
+- View detailed product information
+- See pricing and availability
+- Filter by style, size, or category
+
+### Placing orders
+
+<Steps>
+  <Step title="Browse the catalog">
+    Navigate through available products to find what you need.
+  </Step>
+  
+  <Step title="Select products">
+    Choose items and specify:
+    - Quantity
+    - Sizes needed
+    - Any customization options
+  </Step>
+  
+  <Step title="Review your order">
+    Check your order summary:
+    - Items and quantities
+    - Total price
+    - Delivery information
+  </Step>
+  
+  <Step title="Submit the order">
+    Confirm and place your order. You'll receive an order confirmation.
+  </Step>
+</Steps>
+
+### Order tracking
+
+From your dashboard, you can:
+
+- **View order history**: See all your past and current orders
+- **Check order status**: Track where your order is in production
+- **See order details**: Review items, quantities, and pricing
+- **Download invoices**: Access order documentation
+
+## Managing your account
+
+### Updating your profile
+
+You can update your account information:
+
+- Phone number
+- Business name
+- Contact preferences
+
+<Note>
+You cannot change your email address directly. Contact an administrator if you need to update your email.
+</Note>
+
+### Changing your password
+
+<Steps>
+  <Step title="Access account settings">
+    Navigate to your profile or settings section.
+  </Step>
+  
+  <Step title="Select change password">
+    Click on "Change Password" option.
+  </Step>
+  
+  <Step title="Enter passwords">
+    - Current password
+    - New password
+    - Confirm new password
+  </Step>
+  
+  <Step title="Save changes">
+    Submit to update your password securely.
+  </Step>
+</Steps>
+
+## Session security
+
+Your account uses JWT (JSON Web Tokens) for secure authentication:
+
+| Token Type | Duration | Purpose |
+|------------|----------|----------|
+| Access token | 15 minutes | Active session authorization |
+| Refresh token | 7 days | Automatic re-authentication |
+
+- If you're inactive for 15 minutes, the system refreshes your session automatically
+- After 7 days, you need to log in again
+- Passwords are hashed using bcrypt (never stored in plain text)
+
+## Your account information
+
+The system stores these details about your account:
+
+| Field | Description | Can Edit |
+|-------|-------------|----------|
+| First name | Your first name | Yes |
+| Last name | Your last name | Yes |
+| Email | Login username | No (contact admin) |
+| Phone | Contact number | Yes |
+| Business name | Optional business identifier | Yes |
+| Account status | Validated and active | No |
+| Registration date | When you created your account | No |
+| Validated by | Which admin validated you | No |
+| Validation date | When you were validated | No |
+
+## Troubleshooting
+
+<Accordion title="I can't log in after registering">
+  Your account may still be pending validation. Check for:
+  - A confirmation email about validation
+  - Error message saying "Account pending validation"
+  
+  If you registered recently, wait for administrator approval. If it's been more than 24 hours, contact CALZADO J&R.
+</Accordion>
+
+<Accordion title="I forgot my password">
+  Use the "Forgot Password" link on the login page:
+  1. Enter your email address
+  2. Check your email for a password reset link
+  3. Follow the link and set a new password
+  4. Log in with your new password
+</Accordion>
+
+<Accordion title="I need to change my business name">
+  You can update your business name from your account settings:
+  1. Navigate to your profile
+  2. Edit the business name field
+  3. Save changes
+  
+  The business name field is optional and can be left blank if you're ordering as an individual.
+</Accordion>
+
+<Accordion title="My order isn't showing up">
+  If a placed order doesn't appear in your dashboard:
+  - Refresh the page
+  - Check your order history tab
+  - Verify the order was successfully submitted (you should have received a confirmation)
+  - Contact support if the order is missing after 30 minutes
+</Accordion>
+
+<Accordion title="Can I cancel or modify an order?">
+  Order modification depends on its status:
+  - **Pending/Not started**: Contact an administrator to modify or cancel
+  - **In production**: Modifications may not be possible
+  - **Completed**: Cannot be changed
+  
+  Contact CALZADO J&R as soon as possible if you need to change an order.
+</Accordion>
+
+## Getting help
+
+If you encounter issues not covered in this guide:
+
+1. Check your account status (validated and active)
+2. Verify your internet connection
+3. Try logging out and back in
+4. Clear your browser cache
+5. Contact CALZADO J&R support with:
+   - Your account email
+   - Description of the issue
+   - Any error messages you see

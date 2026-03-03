@@ -1,0 +1,159 @@
+---
+title: Admin workflow
+description: Complete guide for administrators managing the CALZADO J&R system
+---
+
+Administrators have full access to the CALZADO J&R system. This guide covers your main responsibilities and workflows.
+
+## Getting started
+
+<Note>
+Admin accounts are created manually in the database using the `create_admin.py` script. You cannot register as an admin through the application interface.
+</Note>
+
+Once your admin account is created, you can:
+- Validate client accounts
+- Create employee accounts
+- Create additional administrator accounts
+- Access all system features
+
+## First login
+
+<Steps>
+  <Step title="Navigate to login page">
+    Go to the CALZADO J&R login page at `http://localhost:5173` (or your deployment URL).
+  </Step>
+  
+  <Step title="Enter credentials">
+    Enter your admin email and password that were set up during account creation.
+  </Step>
+  
+  <Step title="Automatic redirect">
+    After successful login, you'll be automatically redirected to the administrative dashboard.
+  </Step>
+</Steps>
+
+## Validating client accounts
+
+Clients can register freely through the public registration form, but their accounts start in an inactive state (`is_validated=False`). You must validate them before they can access the system.
+
+<Steps>
+  <Step title="View pending clients">
+    Navigate to the client validation section in your admin dashboard to see all pending client registrations.
+  </Step>
+  
+  <Step title="Review client information">
+    Check the client's details:
+    - First name (Nombres)
+    - Last name (Apellidos)
+    - Phone number
+    - Email
+    - Business name (optional field)
+  </Step>
+  
+  <Step title="Validate the account">
+    Click the validate button to approve the client account. This sets `is_active=True` and `is_validated=True`.
+  </Step>
+  
+  <Step title="Client notification">
+    Once validated, the client can log in and access their dashboard to view the catalog and place orders.
+  </Step>
+</Steps>
+
+<Info>
+When you validate a client account, the system records which admin performed the validation (`validated_by`) and when (`validated_at`).
+</Info>
+
+## Creating employee accounts
+
+Employees cannot register themselves. You must create their accounts and the system will send them their credentials.
+
+<Steps>
+  <Step title="Open employee creation form">
+    Navigate to the employee management section and click "Create Employee".
+  </Step>
+  
+  <Step title="Fill in employee information">
+    Enter the required fields:
+    - First name (Nombres)
+    - Last name (Apellidos)
+    - Phone number
+    - Email address
+    - Occupation (choose one):
+      - Guarnición
+      - Solador
+      - Cortador
+      - Emplantillador
+  </Step>
+  
+  <Step title="Submit the form">
+    The system will:
+    - Generate a secure temporary password
+    - Send an email to the employee with their credentials
+    - Create the account with `is_active=True`, `is_validated=True`, and `must_change_password=True`
+  </Step>
+  
+  <Step title="Inform the employee">
+    Let the employee know to check their email for login credentials. They will be required to change their password on first login.
+  </Step>
+</Steps>
+
+<Note>
+The temporary password is sent via email. Make sure the SMTP configuration is correct in your `.env` file (`MAIL_PASSWORD` and related settings).
+</Note>
+
+## Creating additional admins
+
+As an administrator, you can create more admin accounts to help manage the system.
+
+<Accordion title="How to create another admin account">
+  Follow the same process as creating an employee account, but select "Administrator" as the role. The new admin will receive credentials via email and should change their password on first login.
+</Accordion>
+
+## Managing the system
+
+As an admin, you have access to:
+
+- **Complete inventory control**: Manage supplies and products
+- **Order management**: Oversee all client orders
+- **Task assignment**: Assign work to employees based on their occupation
+- **User management**: View, edit, and deactivate user accounts
+- **System configuration**: Access all administrative settings
+
+## Role-based access
+
+The system automatically detects user roles on login and redirects accordingly:
+
+| Role | Dashboard |
+|------|----------|
+| Admin | Administrative dashboard (full access) |
+| Employee | Task dashboard |
+| Client | Order and catalog dashboard |
+
+<Info>
+Authentication uses JWT tokens with 15-minute access tokens and 7-day refresh tokens. Passwords are hashed using bcrypt for security.
+</Info>
+
+## Troubleshooting
+
+<Accordion title="Employee didn't receive credentials email">
+  Check that:
+  - The email address is correct
+  - Your SMTP settings in `.env` are properly configured
+  - The email didn't go to spam
+  
+  You can resend credentials or manually provide them to the employee.
+</Accordion>
+
+<Accordion title="Client account already validated but can't login">
+  Verify that both `is_active` and `is_validated` are set to `True` in the database. Check the user's credentials and ensure the account hasn't been soft-deleted (`deleted_at` should be null).
+</Accordion>
+
+<Accordion title="Need to access the database directly">
+  If using Docker:
+  ```bash
+  docker compose exec db psql -U jyr_user -d calzado_jyr_db
+  ```
+  
+  For local installations, use your preferred PostgreSQL client to connect on `localhost:5432`.
+</Accordion>

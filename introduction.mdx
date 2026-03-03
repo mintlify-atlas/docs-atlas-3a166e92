@@ -1,0 +1,112 @@
+---
+title: Welcome to CALZADO J&R
+description: Comprehensive shoe factory management system with role-based access control, inventory management, and production workflow automation
+---
+
+<img
+  className="block"
+  src="/images/hero-light.png"
+  alt="CALZADO J&R Management System"
+/>
+
+## Overview
+
+CALZADO J&R is a full-stack management system designed specifically for shoe manufacturing operations. Built with modern web technologies, it streamlines the entire production workflow from customer orders to employee task management and inventory control.
+
+### Three-tier role system
+
+The platform implements a secure, role-based access control system with three distinct user types:
+
+- **Administrators** - Full system access to validate customers, create employee accounts, and manage all operations
+- **Employees** - Task-focused dashboard for production workers (Guarnición, Solador, Cortador, Emplantillador)
+- **Customers** - Self-service registration with order tracking and catalog access
+
+### Built for production environments
+
+The system is production-ready with Docker Compose orchestration, PostgreSQL database persistence, JWT authentication, and email integration for password management and employee onboarding.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card
+    title="User management"
+    icon="users"
+    href="/features/user-management"
+  >
+    Role-based authentication with validation workflows for customers and automatic credential distribution for employees
+  </Card>
+  <Card
+    title="Production workflow"
+    icon="industry"
+    href="/features/orders"
+  >
+    Task assignment and tracking for specialized production roles with real-time dashboard updates
+  </Card>
+  <Card
+    title="Inventory control"
+    icon="boxes-stacked"
+    href="/features/inventory"
+  >
+    Complete inventory management for raw materials, supplies, and finished products
+  </Card>
+  <Card
+    title="Order management"
+    icon="cart-shopping"
+    href="/features/orders"
+  >
+    End-to-end order processing from customer submission to production assignment
+  </Card>
+</CardGroup>
+
+## Technology stack
+
+CALZADO J&R leverages modern, battle-tested technologies:
+
+<CardGroup cols={3}>
+  <Card title="Backend" icon="server">
+    Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic, JWT authentication
+  </Card>
+  <Card title="Frontend" icon="browser">
+    React 19, Vite, TypeScript, TailwindCSS 4, React Router
+  </Card>
+  <Card title="Database" icon="database">
+    PostgreSQL 17 with Docker Compose orchestration
+  </Card>
+</CardGroup>
+
+## Getting started
+
+<CardGroup cols={2}>
+  <Card
+    title="Quick start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get the system running in under 5 minutes with Docker Compose
+  </Card>
+  <Card
+    title="Installation guide"
+    icon="download"
+    href="/installation"
+  >
+    Detailed setup instructions for both Docker and local development environments
+  </Card>
+  <Card
+    title="API reference"
+    icon="code"
+    href="/api/auth/register"
+  >
+    Explore the REST API endpoints with interactive Swagger documentation
+  </Card>
+  <Card
+    title="User roles"
+    icon="shield"
+    href="/concepts/roles"
+  >
+    Understand the permission system and workflow for each user type
+  </Card>
+</CardGroup>
+
+<Note>
+  This is an educational project developed for SENA. The system demonstrates enterprise-grade architecture patterns and best practices for web application development.
+</Note>

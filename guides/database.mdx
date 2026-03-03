@@ -1,0 +1,592 @@
+---
+title: Database schema and migrations
+description: Complete guide to database structure, SQLAlchemy models, and Alembic migrations for CALZADO J&R
+---
+
+## Overview
+
+CALZADO J&R uses PostgreSQL 17 as its relational database with SQLAlchemy 2.0 as the ORM layer and Alembic for schema migrations. The database is initialized automatically via Docker with SQL scripts that create tables, indexes, triggers, and constraints.
+
+## Database architecture
+
+### Connection configuration
+
+The database connection is managed through SQLAlchemy in `be/app/database.py:13`:
+
+```python
+engine = create_engine(
+    settings.DATABASE_URL,
+    pool_pre_ping=True,  # Verify connections before using them
+    echo=False,          # Set to True to log all SQL queries
+)
+```
+
+<Info>
+The `pool_pre_ping=True` option prevents "connection closed" errors by testing each connection before using it.
+</Info>
+
+### Environment variables
+
+Database credentials are configured via `.env` file:
+
+<CodeGroup>
+```bash Docker (default)
+DATABASE_URL=postgresql://jyr_user:password@db:5432/calzado_jyr_db
+```
+
+```bash Local development
+DATABASE_URL=postgresql://jyr_user:password@localhost:5432/calzado_jyr_db
+```
+</CodeGroup>
+
+## Schema overview
+
+The system uses three core tables with soft-delete support:
+
+```mermaid
+erDiagram
+    roles ||--o{ users : "has many"
+    users ||--o{ users : "validated_by"
+    users ||--o{ password_reset_tokens : "has many"
+    
+    roles {
+        uuid id PK
+        varchar name UK
+        varchar description
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    
+    users {
+        uuid id PK
+        varchar email UK
+        varchar hashed_password
+        varchar full_name
+        varchar phone
+        uuid role_id FK
+        boolean is_active
+        boolean is_validated
+        boolean must_change_password
+        varchar business_name
+        varchar occupation
+        uuid validated_by FK
+        timestamp validated_at
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    
+    password_reset_tokens {
+        uuid id PK
+        uuid user_id FK
+        varchar token UK
+        timestamp expires_at
+        boolean used
+        timestamp created_at
+    }
+```
+
+## Tables reference
+
+### roles
+
+Stores the three system roles: `admin`, `employee`, and `client`.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | UUID | PK, auto-generated | Primary key |
+| `name` | VARCHAR(50) | UNIQUE, NOT NULL | Role identifier |
+| `description` | VARCHAR(255) | nullable | Human-readable description |
+| `created_at` | TIMESTAMP | NOT NULL, default NOW() | Record creation time |
+| `updated_at` | TIMESTAMP | NOT NULL, auto-updated | Last modification time |
+| `deleted_at` | TIMESTAMP | nullable | Soft delete timestamp |
+
+**Initial data** (inserted by `db/init/01_create_tables.sql:25`):
+
+```sql
+INSERT INTO roles (name, description) VALUES
+    ('admin', 'Administrador del sistema — acceso completo'),
+    ('employee', 'Empleado de la fábrica — gestión de tareas asignadas'),
+    ('client', 'Cliente — gestión de pedidos y catálogo')
+ON CONFLICT (name) DO NOTHING;
+```
+
+### users
+
+Stores all system users across all three roles.
+
+<Accordion title="View full users table schema">
+| Column | Type | Constraints | Used by |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto-generated | All users |
+| `email` | VARCHAR(255) | UNIQUE, NOT NULL, indexed | All users (login) |
+| `hashed_password` | VARCHAR(255) | NOT NULL | All users |
+| `full_name` | VARCHAR(255) | NOT NULL | All users |
+| `phone` | VARCHAR(20) | nullable | All users |
+| `role_id` | UUID | FK→roles.id, NOT NULL | All users |
+| `is_active` | BOOLEAN | NOT NULL, default FALSE | All users |
+| `is_validated` | BOOLEAN | NOT NULL, default FALSE | Clients & employees |
+| `must_change_password` | BOOLEAN | NOT NULL, default FALSE | Employees only |
+| `business_name` | VARCHAR(255) | nullable | Clients only |
+| `occupation` | VARCHAR(100) | nullable | Employees only |
+| `validated_by` | UUID | FK→users.id, nullable | Validated users |
+| `validated_at` | TIMESTAMP | nullable | Validated users |
+| `created_at` | TIMESTAMP | NOT NULL, default NOW() | All users |
+| `updated_at` | TIMESTAMP | NOT NULL, auto-updated | All users |
+| `deleted_at` | TIMESTAMP | nullable | Soft-deleted users |
+</Accordion>
+
+**Role-specific fields:**
+
+- **Clients:** `business_name` (optional)
+- **Employees:** `occupation` (Guarnición, Solador, Cortador, Emplantillador)
+- **Admins:** No role-specific fields
+
+**Constraints** (enforced at database level in `db/init/02_triggers_and_indexes.sql:139`):
+
+<CodeGroup>
+```sql Email format
+ALTER TABLE users
+    ADD CONSTRAINT chk_users_email_format
+    CHECK (email LIKE '%@%');
+```
+
+```sql Phone format
+ALTER TABLE users
+    ADD CONSTRAINT chk_users_phone_format
+    CHECK (phone IS NULL OR phone ~ '^[0-9\s\+\-\(\)]+$');
+```
+
+```sql Validation consistency
+ALTER TABLE users
+    ADD CONSTRAINT chk_users_validated_consistency
+    CHECK (
+        (is_validated = FALSE) OR
+        (is_validated = TRUE AND validated_at IS NOT NULL)
+    );
+```
+</CodeGroup>
+
+### password_reset_tokens
+
+Stores temporary tokens for password recovery (expires after 1 hour).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | UUID | PK, auto-generated | Primary key |
+| `user_id` | UUID | FK→users.id ON DELETE CASCADE | Associated user |
+| `token` | VARCHAR(255) | UNIQUE, NOT NULL, indexed | Reset token |
+| `expires_at` | TIMESTAMP | NOT NULL | Token expiration |
+| `used` | BOOLEAN | NOT NULL, default FALSE | Whether token was consumed |
+| `created_at` | TIMESTAMP | NOT NULL, default NOW() | Token creation time |
+
+<Warning>
+Tokens are single-use. Once consumed, they cannot be reused even if not expired.
+</Warning>
+
+## Indexes and performance
+
+### Partial indexes for soft-delete
+
+The system uses partial indexes to optimize queries on active records (where `deleted_at IS NULL`):
+
+```sql
+-- Active users by email (login queries)
+CREATE INDEX idx_users_email_active
+    ON users (email)
+    WHERE deleted_at IS NULL;
+
+-- Active users by role (list employees/clients)
+CREATE INDEX idx_users_role_id_active
+    ON users (role_id)
+    WHERE deleted_at IS NULL;
+
+-- Pending validation queries (admin dashboard)
+CREATE INDEX idx_users_role_validated
+    ON users (role_id, is_validated)
+    WHERE deleted_at IS NULL;
+```
+
+<Accordion title="Why partial indexes?">
+Partial indexes are smaller and faster than full-table indexes because they only include rows matching the `WHERE` clause. Since the system uses soft-delete (marking records with `deleted_at` instead of physically deleting them), 95%+ of queries filter by `deleted_at IS NULL`. This dramatically improves performance on large user tables.
+
+**Impact:** O(log n) lookup time vs O(n) full table scan.
+</Accordion>
+
+### Password reset token indexes
+
+```sql
+-- Fast token lookup for validation
+CREATE INDEX idx_prt_token_unused
+    ON password_reset_tokens (token)
+    WHERE used = FALSE;
+
+-- Invalidate all user tokens on password change
+CREATE INDEX idx_prt_user_id
+    ON password_reset_tokens (user_id);
+
+-- Cleanup expired tokens (maintenance task)
+CREATE INDEX idx_prt_expires_at
+    ON password_reset_tokens (expires_at);
+```
+
+## Triggers
+
+Automatic `updated_at` timestamp management via PostgreSQL trigger function (`db/init/02_triggers_and_indexes.sql:29`):
+
+```sql
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+```
+
+<Info>
+This eliminates the need to manually update `updated_at` in application code, preventing auditing gaps.
+</Info>
+
+## SQLAlchemy models
+
+### User model
+
+Defined in `be/app/models/user.py:19`:
+
+```python
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    email: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+
+    # Relationship with role (eager loading)
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("roles.id"),
+        nullable=False,
+    )
+    role = relationship("Role", lazy="selectin")
+```
+
+<Accordion title="Why lazy='selectin'?">
+The `selectin` loading strategy prevents the N+1 query problem by using a single additional SELECT IN query to load related roles. This is more efficient than `lazy="joined"` (which can create large JOINs) or `lazy="select"` (which creates N+1 queries).
+</Accordion>
+
+### Role model
+
+Defined in `be/app/models/role.py:18`:
+
+```python
+class Role(Base):
+    __tablename__ = "roles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+    )
+```
+
+### PasswordResetToken model
+
+Defined in `be/app/models/password_reset_token.py:18`:
+
+```python
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    token: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    used: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    # Cascade delete: token is deleted when user is deleted
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+```
+
+## Migrations with Alembic
+
+### Setup
+
+Alembic is configured in `be/alembic/env.py:27` to use the same database URL as the application:
+
+```python
+from app.config import settings
+from app.database import Base
+
+# Import all models so Alembic can detect them
+from app.models.role import Role
+from app.models.user import User
+from app.models.password_reset_token import PasswordResetToken
+
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+target_metadata = Base.metadata
+```
+
+### Creating migrations
+
+<Steps>
+  <Step title="Auto-generate migration">
+    Alembic compares your SQLAlchemy models with the current database state:
+
+    ```bash
+    # Inside the backend container
+    docker compose exec be alembic revision --autogenerate -m "Add new field"
+    ```
+
+    Or locally:
+
+    ```bash
+    cd be
+    source .venv/bin/activate
+    alembic revision --autogenerate -m "Add new field"
+    ```
+  </Step>
+
+  <Step title="Review the migration">
+    Check the generated file in `be/alembic/versions/`:
+
+    ```python
+    def upgrade() -> None:
+        op.add_column('users', sa.Column('new_field', sa.String(255), nullable=True))
+
+    def downgrade() -> None:
+        op.drop_column('users', 'new_field')
+    ```
+
+    <Warning>
+    Always review auto-generated migrations. Alembic may miss custom SQL, indexes, or constraints.
+    </Warning>
+  </Step>
+
+  <Step title="Apply the migration">
+    ```bash
+    # Apply migration
+    docker compose exec be alembic upgrade head
+
+    # Rollback one version
+    docker compose exec be alembic downgrade -1
+    ```
+  </Step>
+</Steps>
+
+### Migration commands reference
+
+| Command | Description |
+|---------|-------------|
+| `alembic current` | Show current revision |
+| `alembic history` | List all migrations |
+| `alembic upgrade head` | Apply all pending migrations |
+| `alembic downgrade -1` | Rollback one migration |
+| `alembic downgrade base` | Rollback all migrations |
+| `alembic revision -m "message"` | Create empty migration |
+| `alembic revision --autogenerate -m "msg"` | Auto-generate migration |
+
+## Database initialization
+
+On first startup, Docker automatically executes SQL scripts from `db/init/` in alphabetical order:
+
+<Steps>
+  <Step title="01_create_tables.sql">
+    - Enables `uuid-ossp` extension
+    - Creates `roles`, `users`, `password_reset_tokens` tables
+    - Inserts initial roles (admin, employee, client)
+    - Creates basic indexes
+  </Step>
+
+  <Step title="02_triggers_and_indexes.sql">
+    - Creates `set_updated_at()` trigger function
+    - Attaches triggers to tables
+    - Creates partial indexes for soft-delete
+    - Adds check constraints for data integrity
+  </Step>
+</Steps>
+
+<Info>
+Scripts are idempotent (use `IF NOT EXISTS` and `ON CONFLICT DO NOTHING`) so they can be run multiple times safely.
+</Info>
+
+## Creating the admin user
+
+After database initialization, create the first administrator:
+
+```bash
+docker compose exec be python scripts/create_admin.py
+```
+
+This creates:
+- **Email:** admin@calzadojyr.com
+- **Password:** Admin123! (change after first login)
+- **Status:** Active and validated
+
+The script is defined in `be/scripts/create_admin.py:25` and uses SQLAlchemy to insert directly into the database.
+
+## Common queries
+
+### Soft-delete pattern
+
+```python
+# Soft delete (recommended)
+user.deleted_at = datetime.now(timezone.utc)
+db.commit()
+
+# Query only active users
+stmt = select(User).where(User.deleted_at.is_(None))
+```
+
+### Get users by role
+
+```python
+from sqlalchemy import select, join
+
+stmt = (
+    select(User)
+    .join(Role)
+    .where(Role.name == "client")
+    .where(User.deleted_at.is_(None))
+)
+clients = db.execute(stmt).scalars().all()
+```
+
+### Find unvalidated clients
+
+```python
+stmt = (
+    select(User)
+    .join(Role)
+    .where(Role.name == "client")
+    .where(User.is_validated == False)
+    .where(User.deleted_at.is_(None))
+)
+unvalidated = db.execute(stmt).scalars().all()
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Always use transactions">
+    ```python
+    try:
+        user.email = "new@email.com"
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    ```
+  </Accordion>
+
+  <Accordion title="Use soft-delete for audit trails">
+    Never use `db.delete(user)` for user records. Instead:
+
+    ```python
+    user.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    ```
+
+    This preserves referential integrity for `validated_by` foreign keys.
+  </Accordion>
+
+  <Accordion title="Filter soft-deleted records">
+    Always include `deleted_at IS NULL` in queries:
+
+    ```python
+    stmt = select(User).where(
+        User.email == email,
+        User.deleted_at.is_(None)
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Validate at database level">
+    Don't rely solely on application-level validation. Use database constraints:
+
+    ```sql
+    -- Prevent invalid emails at DB level
+    CHECK (email LIKE '%@%')
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Database maintenance
+
+### Clean expired tokens
+
+Create a periodic task to remove expired password reset tokens:
+
+```python
+from datetime import datetime, timezone
+
+expired_tokens = (
+    db.query(PasswordResetToken)
+    .filter(PasswordResetToken.expires_at < datetime.now(timezone.utc))
+    .delete()
+)
+db.commit()
+```
+
+### Backup strategy
+
+```bash
+# Backup database
+docker compose exec db pg_dump -U jyr_user calzado_jyr_db > backup.sql
+
+# Restore database
+docker compose exec -T db psql -U jyr_user calzado_jyr_db < backup.sql
+```
+
+### Reset database (development only)
+
+<Warning>
+This deletes ALL data including the volume. Only use in development.
+</Warning>
+
+```bash
+docker compose down -v
+docker compose up -d
+docker compose exec be python scripts/create_admin.py
+```

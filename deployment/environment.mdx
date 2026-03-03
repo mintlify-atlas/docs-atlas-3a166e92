@@ -1,0 +1,306 @@
+---
+title: Environment variables
+description: Complete reference for all environment variables used to configure CALZADO J&R database, backend, and frontend services.
+---
+
+CALZADO J&R uses a single `.env` file at the project root to configure all services. This centralizes configuration and keeps sensitive credentials out of version control.
+
+<Warning>
+  Never commit your `.env` file to git. It's included in `.gitignore` by default.
+</Warning>
+
+## Setup
+
+Copy the example file and customize:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your actual values.
+
+## Database variables
+
+PostgreSQL connection and authentication settings.
+
+<ParamField path="POSTGRES_USER" type="string" default="jyr_user" required>
+  PostgreSQL username. This user must have full privileges on the database.
+
+  ```bash
+  POSTGRES_USER=jyr_user
+  ```
+</ParamField>
+
+<ParamField path="POSTGRES_PASSWORD" type="string" required>
+  PostgreSQL password for the user.
+
+  <Warning>
+    You **must** change this from the example value before deploying. Never use the default password.
+  </Warning>
+
+  Generate a secure password:
+  ```bash
+  openssl rand -base64 24
+  ```
+
+  ```bash
+  POSTGRES_PASSWORD=your_secure_database_password
+  ```
+</ParamField>
+
+<ParamField path="POSTGRES_DB" type="string" default="calzado_jyr_db" required>
+  Name of the PostgreSQL database to create and use.
+
+  ```bash
+  POSTGRES_DB=calzado_jyr_db
+  ```
+</ParamField>
+
+<ParamField path="DB_PORT" type="number" default="5432">
+  Port to expose PostgreSQL on the host machine. Only used in Docker Compose.
+
+  Change if port 5432 is already in use:
+  ```bash
+  DB_PORT=5433
+  ```
+</ParamField>
+
+## JWT and security
+
+Authentication and token configuration for the FastAPI backend.
+
+<ParamField path="SECRET_KEY" type="string" required>
+  Secret key used to sign JWT tokens. Must be cryptographically secure.
+
+  <Warning>
+    You **must** generate a new key before deploying. Never use the example value.
+  </Warning>
+
+  Generate a secure key:
+  ```bash
+  python -c "import secrets; print(secrets.token_urlsafe(48))"
+  ```
+
+  ```bash
+  SECRET_KEY=your_generated_secret_key_here
+  ```
+</ParamField>
+
+<ParamField path="ALGORITHM" type="string" default="HS256">
+  JWT signing algorithm. `HS256` (HMAC with SHA-256) is the standard for symmetric keys.
+
+  ```bash
+  ALGORITHM=HS256
+  ```
+</ParamField>
+
+<ParamField path="ACCESS_TOKEN_EXPIRE_MINUTES" type="number" default="15">
+  Access token lifetime in minutes. Shorter values are more secure but require more frequent refreshes.
+
+  ```bash
+  ACCESS_TOKEN_EXPIRE_MINUTES=15
+  ```
+</ParamField>
+
+<ParamField path="REFRESH_TOKEN_EXPIRE_DAYS" type="number" default="7">
+  Refresh token lifetime in days. Users must re-authenticate after this period.
+
+  ```bash
+  REFRESH_TOKEN_EXPIRE_DAYS=7
+  ```
+</ParamField>
+
+## Email configuration
+
+SMTP settings for sending emails (employee credentials, password resets).
+
+<ParamField path="MAIL_SERVER" type="string" default="smtp.gmail.com" required>
+  SMTP server hostname.
+
+  For Gmail:
+  ```bash
+  MAIL_SERVER=smtp.gmail.com
+  ```
+
+  For other providers:
+  - Outlook: `smtp-mail.outlook.com`
+  - SendGrid: `smtp.sendgrid.net`
+  - Mailgun: `smtp.mailgun.org`
+</ParamField>
+
+<ParamField path="MAIL_PORT" type="number" default="587">
+  SMTP server port.
+
+  - `587` - TLS/STARTTLS (recommended)
+  - `465` - SSL
+  - `25` - Unencrypted (not recommended)
+
+  ```bash
+  MAIL_PORT=587
+  ```
+</ParamField>
+
+<ParamField path="MAIL_USERNAME" type="string" required>
+  SMTP authentication username (usually your email address).
+
+  ```bash
+  MAIL_USERNAME=noreply@calzadojyr.com
+  ```
+</ParamField>
+
+<ParamField path="MAIL_PASSWORD" type="string" required>
+  SMTP authentication password or app-specific password.
+
+  <Warning>
+    For Gmail, you must use an [App Password](https://support.google.com/accounts/answer/185833), not your regular account password.
+  </Warning>
+
+  ```bash
+  MAIL_PASSWORD=your_smtp_app_password
+  ```
+</ParamField>
+
+<ParamField path="MAIL_FROM" type="string" required>
+  Email address that appears in the "From" field of sent emails.
+
+  ```bash
+  MAIL_FROM=noreply@calzadojyr.com
+  ```
+</ParamField>
+
+<ParamField path="MAIL_FROM_NAME" type="string" default="CALZADO J&R">
+  Display name that appears in the "From" field.
+
+  ```bash
+  MAIL_FROM_NAME=CALZADO J&R
+  ```
+</ParamField>
+
+## Service URLs
+
+URL configuration for inter-service communication and CORS.
+
+<ParamField path="FRONTEND_URL" type="string" default="http://localhost:5173">
+  URL where the frontend is accessible. Used by the backend to configure CORS (Cross-Origin Resource Sharing).
+
+  Development:
+  ```bash
+  FRONTEND_URL=http://localhost:5173
+  ```
+
+  Production:
+  ```bash
+  FRONTEND_URL=https://app.calzadojyr.com
+  ```
+</ParamField>
+
+<ParamField path="VITE_API_URL" type="string" default="http://localhost:8000">
+  Backend API URL. Used by the frontend to make API requests.
+
+  <Note>
+    Variables prefixed with `VITE_` are exposed to the browser. Do not store secrets here.
+  </Note>
+
+  Development:
+  ```bash
+  VITE_API_URL=http://localhost:8000
+  ```
+
+  Production:
+  ```bash
+  VITE_API_URL=https://api.calzadojyr.com
+  ```
+</ParamField>
+
+## Port configuration
+
+Host port mappings for Docker Compose. Only relevant when using Docker.
+
+<ParamField path="BE_PORT" type="number" default="8000">
+  Port to expose the backend on your host machine.
+
+  ```bash
+  BE_PORT=8000
+  ```
+
+  Change if 8000 is already in use:
+  ```bash
+  BE_PORT=8001
+  ```
+</ParamField>
+
+<ParamField path="FE_PORT" type="number" default="5173">
+  Port to expose the frontend on your host machine.
+
+  ```bash
+  FE_PORT=5173
+  ```
+
+  Change if 5173 is already in use:
+  ```bash
+  FE_PORT=5174
+  ```
+</ParamField>
+
+## Example configuration
+
+Complete example for local development:
+
+```bash .env
+# Database
+POSTGRES_USER=jyr_user
+POSTGRES_PASSWORD=my_secure_db_password_12345
+POSTGRES_DB=calzado_jyr_db
+DB_PORT=5432
+
+# JWT and Security
+SECRET_KEY=xM8f9Kp2Ln7Qw3Rt5Yv1Zu4Ac6Dg8Hj0Km2Np5Qs7Tu9Wv1Xz3
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Email
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=noreply@calzadojyr.com
+MAIL_PASSWORD=abcd efgh ijkl mnop
+MAIL_FROM=noreply@calzadojyr.com
+MAIL_FROM_NAME=CALZADO J&R
+
+# URLs
+FRONTEND_URL=http://localhost:5173
+VITE_API_URL=http://localhost:8000
+
+# Ports
+BE_PORT=8000
+FE_PORT=5173
+```
+
+## Production considerations
+
+For production deployments:
+
+1. **Use strong secrets** - Generate cryptographically secure passwords and keys
+2. **Use HTTPS** - Update `FRONTEND_URL` and `VITE_API_URL` to use `https://`
+3. **Restrict CORS** - Set `FRONTEND_URL` to your exact production domain
+4. **Don't expose database** - Remove `DB_PORT` or ensure firewall rules prevent external access
+5. **Use environment-specific values** - Don't reuse development credentials in production
+6. **Consider secrets management** - Use AWS Secrets Manager, HashiCorp Vault, or similar for sensitive values
+
+## Validation
+
+The backend validates required environment variables on startup. Missing or invalid values will cause the application to fail immediately with clear error messages.
+
+To verify your configuration:
+
+```bash
+# With Docker
+docker compose up
+
+# Local development
+cd be
+source .venv/bin/activate
+uvicorn app.main:app
+```
+
+Check the logs for any configuration errors.

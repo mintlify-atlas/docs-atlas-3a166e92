@@ -1,0 +1,853 @@
+---
+title: Testing setup and guidelines
+description: Comprehensive testing guide for backend (pytest) and frontend (Vitest) in CALZADO J&R
+---
+
+## Overview
+
+CALZADO J&R uses a comprehensive testing strategy with separate frameworks for backend and frontend:
+
+- **Backend:** pytest + httpx for API testing
+- **Frontend:** Vitest + React Testing Library for component testing
+
+Both suites support async testing and provide coverage reporting.
+
+## Backend testing (pytest)
+
+### Dependencies
+
+Testing dependencies are specified in `be/requirements.txt:40`:
+
+```txt
+pytest>=8.0.0           # Test framework
+pytest-asyncio>=0.24.0  # Async test support
+httpx>=0.27.0           # HTTP client for API testing
+pytest-cov>=6.0.0       # Coverage reporting
+```
+
+### Installation
+
+<Tabs>
+  <Tab title="Docker (recommended)">
+    Dependencies are pre-installed in the Docker image. No additional setup needed.
+
+    ```bash
+    # Run tests inside the container
+    docker compose exec be pytest
+    ```
+  </Tab>
+
+  <Tab title="Local development">
+    ```bash
+    cd be
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    pytest
+    ```
+  </Tab>
+</Tabs>
+
+### Project structure
+
+```
+be/
+├── app/
+│   ├── models/
+│   ├── routers/
+│   ├── services/
+│   └── utils/
+├── tests/                    # Test directory (create this)
+│   ├── conftest.py          # Shared fixtures
+│   ├── test_auth.py         # Authentication tests
+│   ├── test_users.py        # User management tests
+│   └── test_models.py       # Model tests
+└── pytest.ini               # Pytest configuration
+```
+
+### Configuration
+
+Create `be/pytest.ini`:
+
+```ini
+[pytest]
+python_files = test_*.py *_test.py
+python_classes = Test*
+python_functions = test_*
+
+# Async support
+asyncio_mode = auto
+
+# Coverage settings
+addopts = 
+    --cov=app
+    --cov-report=html
+    --cov-report=term-missing
+    -v
+
+# Test discovery
+testpaths = tests
+
+# Warnings
+filterwarnings =
+    error
+    ignore::DeprecationWarning
+```
+
+### Test database setup
+
+Create a test fixture in `tests/conftest.py`:
+
+```python
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from fastapi.testclient import TestClient
+
+from app.database import Base
+from app.main import app
+from app.dependencies import get_db
+
+# In-memory SQLite for fast tests
+TEST_DATABASE_URL = "sqlite:///:memory:"
+
+engine = create_engine(
+    TEST_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@pytest.fixture(scope="function")
+def db():
+    """Create a fresh database for each test."""
+    Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(scope="function")
+def client(db):
+    """Create a test client with database dependency override."""
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+    
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+```
+
+<Info>
+Using SQLite in-memory for tests is significantly faster than PostgreSQL and doesn't require external services.
+</Info>
+
+### Test examples
+
+#### Testing authentication endpoints
+
+Create `tests/test_auth.py`:
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+
+from app.models.role import Role
+from app.models.user import User
+from app.utils.security import hash_password
+
+
+def test_login_success(client, db):
+    """Test successful login with valid credentials."""
+    # Setup: create role and user
+    admin_role = Role(name="admin", description="Administrator")
+    db.add(admin_role)
+    db.commit()
+    db.refresh(admin_role)
+    
+    user = User(
+        email="test@calzadojyr.com",
+        full_name="Test User",
+        hashed_password=hash_password("Password123!"),
+        role_id=admin_role.id,
+        is_active=True,
+        is_validated=True,
+    )
+    db.add(user)
+    db.commit()
+    
+    # Test: login
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "email": "test@calzadojyr.com",
+            "password": "Password123!"
+        }
+    )
+    
+    # Assert
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    assert "token_type" in data
+    assert data["token_type"] == "bearer"
+
+
+def test_login_invalid_credentials(client, db):
+    """Test login fails with wrong password."""
+    admin_role = Role(name="admin", description="Administrator")
+    db.add(admin_role)
+    db.commit()
+    db.refresh(admin_role)
+    
+    user = User(
+        email="test@calzadojyr.com",
+        full_name="Test User",
+        hashed_password=hash_password("Password123!"),
+        role_id=admin_role.id,
+        is_active=True,
+        is_validated=True,
+    )
+    db.add(user)
+    db.commit()
+    
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "email": "test@calzadojyr.com",
+            "password": "WrongPassword"
+        }
+    )
+    
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Credenciales inválidas"
+
+
+def test_login_inactive_user(client, db):
+    """Test login fails for inactive user."""
+    admin_role = Role(name="admin", description="Administrator")
+    db.add(admin_role)
+    db.commit()
+    db.refresh(admin_role)
+    
+    user = User(
+        email="test@calzadojyr.com",
+        full_name="Test User",
+        hashed_password=hash_password("Password123!"),
+        role_id=admin_role.id,
+        is_active=False,  # Inactive
+        is_validated=True,
+    )
+    db.add(user)
+    db.commit()
+    
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "email": "test@calzadojyr.com",
+            "password": "Password123!"
+        }
+    )
+    
+    assert response.status_code == 403
+```
+
+#### Testing user creation
+
+Create `tests/test_users.py`:
+
+```python
+import pytest
+from app.models.role import Role
+from app.models.user import User
+from app.utils.security import hash_password
+
+
+def test_create_client(client, db):
+    """Test client self-registration."""
+    # Setup role
+    client_role = Role(name="client", description="Client")
+    db.add(client_role)
+    db.commit()
+    
+    # Test registration
+    response = client.post(
+        "/api/users/register",
+        json={
+            "email": "newclient@example.com",
+            "password": "SecurePass123!",
+            "full_name": "New Client",
+            "phone": "1234567890",
+            "business_name": "My Business"
+        }
+    )
+    
+    assert response.status_code == 201
+    data = response.json()
+    assert data["email"] == "newclient@example.com"
+    assert data["is_active"] == False  # Pending validation
+    assert data["is_validated"] == False
+
+
+def test_create_employee_admin_only(client, db):
+    """Test only admins can create employee accounts."""
+    # Setup roles
+    admin_role = Role(name="admin", description="Admin")
+    employee_role = Role(name="employee", description="Employee")
+    db.add_all([admin_role, employee_role])
+    db.commit()
+    db.refresh(admin_role)
+    
+    # Create admin user
+    admin = User(
+        email="admin@calzadojyr.com",
+        full_name="Admin User",
+        hashed_password=hash_password("Admin123!"),
+        role_id=admin_role.id,
+        is_active=True,
+        is_validated=True,
+    )
+    db.add(admin)
+    db.commit()
+    
+    # Login as admin
+    login_response = client.post(
+        "/api/auth/login",
+        json={"email": "admin@calzadojyr.com", "password": "Admin123!"}
+    )
+    token = login_response.json()["access_token"]
+    
+    # Create employee
+    response = client.post(
+        "/api/users/employees",
+        json={
+            "email": "employee@calzadojyr.com",
+            "full_name": "New Employee",
+            "occupation": "Solador"
+        },
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 201
+    data = response.json()
+    assert data["must_change_password"] == True
+```
+
+#### Testing models
+
+Create `tests/test_models.py`:
+
+```python
+import pytest
+from datetime import datetime, timezone, timedelta
+
+from app.models.role import Role
+from app.models.user import User
+from app.models.password_reset_token import PasswordResetToken
+from app.utils.security import hash_password
+
+
+def test_user_soft_delete(db):
+    """Test soft delete preserves user data."""
+    role = Role(name="client", description="Client")
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+    
+    user = User(
+        email="test@example.com",
+        full_name="Test User",
+        hashed_password=hash_password("password"),
+        role_id=role.id,
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    
+    # Soft delete
+    user.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    
+    # Verify user still exists but marked as deleted
+    deleted_user = db.query(User).filter(User.id == user_id).first()
+    assert deleted_user is not None
+    assert deleted_user.deleted_at is not None
+
+
+def test_password_reset_token_expiry(db):
+    """Test token expiration logic."""
+    role = Role(name="client", description="Client")
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+    
+    user = User(
+        email="test@example.com",
+        full_name="Test User",
+        hashed_password=hash_password("password"),
+        role_id=role.id,
+    )
+    db.add(user)
+    db.commit()
+    
+    # Create expired token
+    expired_token = PasswordResetToken(
+        user_id=user.id,
+        token="expired_token_abc123",
+        expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        used=False
+    )
+    db.add(expired_token)
+    db.commit()
+    
+    # Verify token is expired
+    assert expired_token.expires_at < datetime.now(timezone.utc)
+```
+
+### Running tests
+
+<CodeGroup>
+```bash All tests
+docker compose exec be pytest
+```
+
+```bash Specific file
+docker compose exec be pytest tests/test_auth.py
+```
+
+```bash Specific test
+docker compose exec be pytest tests/test_auth.py::test_login_success
+```
+
+```bash With coverage
+docker compose exec be pytest --cov=app --cov-report=html
+```
+
+```bash Verbose output
+docker compose exec be pytest -v -s
+```
+</CodeGroup>
+
+### Coverage reports
+
+After running tests with coverage:
+
+```bash
+# View terminal summary
+docker compose exec be pytest --cov=app --cov-report=term-missing
+
+# Generate HTML report
+docker compose exec be pytest --cov=app --cov-report=html
+
+# Copy report to host (if in Docker)
+docker cp calzado_jyr_be:/app/htmlcov ./htmlcov
+open htmlcov/index.html
+```
+
+## Frontend testing (Vitest)
+
+### Dependencies
+
+Frontend testing uses Vitest and React Testing Library. Install dependencies:
+
+```bash
+cd fe
+npm install -D vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom
+```
+
+### Configuration
+
+Add to `fe/vite.config.ts`:
+
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      exclude: ['node_modules/', 'src/test/'],
+    },
+  },
+})
+```
+
+Create `fe/src/test/setup.ts`:
+
+```typescript
+import { expect, afterEach } from 'vitest'
+import { cleanup } from '@testing-library/react'
+import * as matchers from '@testing-library/jest-dom/matchers'
+
+// Extend Vitest matchers with jest-dom
+expect.extend(matchers)
+
+// Cleanup after each test
+afterEach(() => {
+  cleanup()
+})
+```
+
+### Test examples
+
+#### Testing login component
+
+Create `fe/src/pages/Login.test.tsx`:
+
+```typescript
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { BrowserRouter } from 'react-router-dom'
+import Login from './Login'
+
+const renderLogin = () => {
+  return render(
+    <BrowserRouter>
+      <Login />
+    </BrowserRouter>
+  )
+}
+
+describe('Login Page', () => {
+  it('renders login form', () => {
+    renderLogin()
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeInTheDocument()
+  })
+
+  it('shows validation errors for empty fields', async () => {
+    const user = userEvent.setup()
+    renderLogin()
+
+    const submitButton = screen.getByRole('button', { name: /iniciar sesión/i })
+    await user.click(submitButton)
+
+    await waitFor(() => {
+      expect(screen.getByText(/el email es requerido/i)).toBeInTheDocument()
+      expect(screen.getByText(/la contraseña es requerida/i)).toBeInTheDocument()
+    })
+  })
+
+  it('submits form with valid credentials', async () => {
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.type(screen.getByLabelText(/email/i), 'test@calzadojyr.com')
+    await user.type(screen.getByLabelText(/contraseña/i), 'Password123!')
+    await user.click(screen.getByRole('button', { name: /iniciar sesión/i }))
+
+    // Verify API call was made (mock API in real tests)
+    await waitFor(() => {
+      // Add assertions based on your implementation
+    })
+  })
+})
+```
+
+#### Testing dashboard component
+
+```typescript
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import Dashboard from './Dashboard'
+import { AuthContext } from '../context/AuthContext'
+
+const mockAuthContext = {
+  user: {
+    id: '123',
+    email: 'admin@calzadojyr.com',
+    full_name: 'Admin User',
+    role: { name: 'admin' },
+  },
+  isAuthenticated: true,
+  login: vi.fn(),
+  logout: vi.fn(),
+}
+
+describe('Dashboard', () => {
+  it('displays user name', () => {
+    render(
+      <AuthContext.Provider value={mockAuthContext}>
+        <Dashboard />
+      </AuthContext.Provider>
+    )
+
+    expect(screen.getByText(/Admin User/i)).toBeInTheDocument()
+  })
+
+  it('shows admin-only content for admin users', () => {
+    render(
+      <AuthContext.Provider value={mockAuthContext}>
+        <Dashboard />
+      </AuthContext.Provider>
+    )
+
+    expect(screen.getByText(/validar clientes/i)).toBeInTheDocument()
+    expect(screen.getByText(/crear empleado/i)).toBeInTheDocument()
+  })
+})
+```
+
+### Running frontend tests
+
+<CodeGroup>
+```bash All tests
+npm test
+```
+
+```bash Watch mode
+npm test -- --watch
+```
+
+```bash With coverage
+npm test -- --coverage
+```
+
+```bash UI mode (interactive)
+npm test -- --ui
+```
+</CodeGroup>
+
+Add to `fe/package.json`:
+
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  }
+}
+```
+
+## Testing best practices
+
+<AccordionGroup>
+  <Accordion title="Test behavior, not implementation">
+    Focus on what the user sees and does, not internal state:
+
+    ```typescript
+    // Good: tests user interaction
+    expect(screen.getByText(/bienvenido/i)).toBeInTheDocument()
+
+    // Bad: tests implementation details
+    expect(component.state.isLoggedIn).toBe(true)
+    ```
+  </Accordion>
+
+  <Accordion title="Use realistic test data">
+    Match production data patterns:
+
+    ```python
+    # Good: realistic email and name
+    user = User(
+        email="juan.perez@calzadojyr.com",
+        full_name="Juan Pérez",
+        occupation="Solador"
+    )
+
+    # Bad: generic test data
+    user = User(
+        email="test@test.com",
+        full_name="Test User"
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Clean up after tests">
+    Always reset state between tests:
+
+    ```python
+    @pytest.fixture(scope="function")
+    def db():
+        Base.metadata.create_all(bind=engine)
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+            Base.metadata.drop_all(bind=engine)  # Clean up
+    ```
+  </Accordion>
+
+  <Accordion title="Test error cases">
+    Don't just test the happy path:
+
+    ```python
+    def test_login_with_invalid_email():
+        response = client.post("/api/auth/login", json={
+            "email": "notanemail",
+            "password": "password"
+        })
+        assert response.status_code == 422
+    ```
+  </Accordion>
+
+  <Accordion title="Use factories for complex data">
+    Create helper functions for test data:
+
+    ```python
+    def create_test_user(db, role_name="client", **kwargs):
+        role = db.query(Role).filter(Role.name == role_name).first()
+        defaults = {
+            "email": "test@example.com",
+            "full_name": "Test User",
+            "hashed_password": hash_password("password"),
+            "role_id": role.id,
+        }
+        defaults.update(kwargs)
+        user = User(**defaults)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## CI/CD integration
+
+### GitHub Actions example
+
+Create `.github/workflows/test.yml`:
+
+```yaml
+name: Run Tests
+
+on: [push, pull_request]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          cd be
+          pip install -r requirements.txt
+      
+      - name: Run tests
+        run: |
+          cd be
+          pytest --cov=app --cov-report=xml
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./be/coverage.xml
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: |
+          cd fe
+          npm ci
+      
+      - name: Run tests
+        run: |
+          cd fe
+          npm test -- --coverage
+```
+
+## Troubleshooting tests
+
+<Accordion title="Tests fail with database connection errors">
+  **Problem:** Tests can't connect to PostgreSQL.
+
+  **Solution:** Use SQLite in-memory for unit tests:
+
+  ```python
+  TEST_DATABASE_URL = "sqlite:///:memory:"
+  ```
+
+  Or wait for PostgreSQL service in CI:
+
+  ```yaml
+  options: >-
+    --health-cmd pg_isready
+    --health-interval 10s
+  ```
+</Accordion>
+
+<Accordion title="Async tests not running">
+  **Problem:** `RuntimeWarning: coroutine was never awaited`.
+
+  **Solution:** Add `pytest-asyncio` and mark tests:
+
+  ```python
+  import pytest
+
+  @pytest.mark.asyncio
+  async def test_async_function():
+      result = await some_async_function()
+      assert result == expected
+  ```
+
+  Or enable auto mode in `pytest.ini`:
+
+  ```ini
+  [pytest]
+  asyncio_mode = auto
+  ```
+</Accordion>
+
+<Accordion title="Frontend tests fail with 'window is not defined'">
+  **Problem:** React tests fail in Node environment.
+
+  **Solution:** Configure jsdom in `vite.config.ts`:
+
+  ```typescript
+  export default defineConfig({
+    test: {
+      environment: 'jsdom',
+    },
+  })
+  ```
+</Accordion>

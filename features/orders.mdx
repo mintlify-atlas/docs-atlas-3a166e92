@@ -1,0 +1,351 @@
+---
+title: Order and task management
+description: Handle client orders, production workflows, and task assignments for shoe manufacturing
+---
+
+## Overview
+
+The order and task management system connects clients who place orders with employees who manufacture the shoes. Orders are broken down into production tasks that are assigned to employees based on their occupation.
+
+<Note>
+Order and task management features are currently in development. The information below describes the planned functionality based on the system design.
+</Note>
+
+## Order workflow
+
+The complete order lifecycle from placement to delivery:
+
+<Steps>
+  <Step title="Client places order">
+    Client selects product from catalog and specifies quantity, size, and customization options
+  </Step>
+  <Step title="Administrator reviews order">
+    Admin verifies order details and checks material availability
+  </Step>
+  <Step title="Order approved">
+    Admin approves order and it enters production queue
+  </Step>
+  <Step title="Tasks generated">
+    System breaks order into production tasks for different occupations
+  </Step>
+  <Step title="Tasks assigned">
+    Tasks are assigned to available employees based on their occupation
+  </Step>
+  <Step title="Production begins">
+    Employees complete their assigned tasks in sequence
+  </Step>
+  <Step title="Quality check">
+    Finished product is inspected before marking order complete
+  </Step>
+  <Step title="Order delivered">
+    Client is notified and product is delivered
+  </Step>
+</Steps>
+
+## Order management
+
+### Creating orders
+
+**Client-initiated orders:**
+
+Clients will be able to create orders through their dashboard:
+
+- Browse product catalog
+- Select shoe style, size, color, and material options
+- Specify quantity
+- Add custom requirements or notes
+- Submit order for admin review
+
+**Admin-initiated orders:**
+
+Administrators can also create orders on behalf of clients:
+
+- Useful for phone orders or walk-in customers
+- Can create special or custom orders not in the catalog
+- Direct approval without review step
+
+<Info>
+All orders must be approved by an administrator before entering production, even if created by the admin themselves.
+</Info>
+
+### Order details
+
+Each order will track:
+
+**Basic information:**
+- Order number (unique identifier)
+- Client information
+- Order date and expected completion date
+- Current status
+- Total cost
+- Payment status
+
+**Product specifications:**
+- Shoe model/style
+- Size (multiple pairs can be included)
+- Color and material selections
+- Quantity
+- Custom requirements or modifications
+
+**Production tracking:**
+- List of tasks and their status
+- Assigned employees
+- Materials allocated
+- Progress percentage
+- Completion date
+
+### Order statuses
+
+Orders progress through defined states:
+
+| Status | Description | Who can update |
+|--------|-------------|----------------|
+| Pending | Awaiting admin review | Administrator |
+| Approved | Ready for production | Administrator |
+| In Production | Tasks are being completed | System (automatic) |
+| Quality Check | Product inspection | Administrator |
+| Completed | Ready for delivery | Administrator |
+| Delivered | Received by client | Administrator |
+| Cancelled | Order was cancelled | Administrator |
+| On Hold | Temporarily paused | Administrator |
+
+<Warning>
+Once an order enters production (tasks have been started), it cannot be cancelled without administrator approval and may incur material costs.
+</Warning>
+
+## Task management
+
+### Task generation
+
+When an order is approved, the system will automatically generate tasks based on the production process:
+
+**Standard shoe production tasks:**
+
+1. **Cortador (Cutting):** Cut leather or material pieces according to pattern
+2. **Emplantillador (Insole prep):** Prepare and shape insoles
+3. **Guarnición (Upper assembly):** Sew and assemble upper parts of shoe
+4. **Solador (Sole attachment):** Attach sole to assembled upper
+
+**Task sequence:**
+
+Tasks must be completed in order:
+- Cortador → Emplantillador → Guarnición → Solador
+
+A task cannot be started until the previous task is marked complete.
+
+### Task assignment
+
+Administrators will assign tasks to employees:
+
+**Assignment criteria:**
+- Employee occupation must match task type
+- Employee must be active and validated
+- Employee workload (number of pending tasks)
+- Employee availability
+
+**Assignment options:**
+- **Manual assignment:** Admin selects specific employee
+- **Automatic assignment:** System assigns to employee with lowest workload
+- **Employee selection:** Employees pick from available tasks
+
+<Info>
+The system will track employee workload to help balance task distribution and prevent overloading specific workers.
+</Info>
+
+### Task details
+
+Each task will include:
+
+- Task ID and description
+- Order reference (link to parent order)
+- Occupation required
+- Assigned employee
+- Status (pending, in progress, completed, blocked)
+- Priority level
+- Estimated time to complete
+- Actual start and completion times
+- Materials required
+- Instructions or notes
+- Photos or reference images
+
+### Employee task dashboard
+
+Employees will see their assigned tasks in a dedicated dashboard:
+
+**Task list features:**
+- View all assigned tasks
+- Filter by status (pending, in progress, completed)
+- Sort by priority or due date
+- See order details for each task
+- View required materials
+- Access instructions and reference images
+
+**Task actions:**
+- Start task (changes status to "in progress")
+- Record material usage
+- Add notes or report issues
+- Complete task (marks as done and notifies system)
+- Request help or clarification
+
+<Steps>
+  <Step title="Open task">
+    Employee selects a task from their dashboard
+  </Step>
+  <Step title="Review details">
+    Check instructions, materials needed, and reference images
+  </Step>
+  <Step title="Gather materials">
+    Collect required materials from inventory
+  </Step>
+  <Step title="Start work">
+    Click "Start Task" to begin production
+  </Step>
+  <Step title="Complete work">
+    Perform the required manufacturing steps
+  </Step>
+  <Step title="Mark complete">
+    Click "Complete Task" when work is finished
+  </Step>
+  <Step title="Next task">
+    Task is removed from active list and next employee is notified
+  </Step>
+</Steps>
+
+## Notifications
+
+The system will send notifications to keep users informed:
+
+### Administrator notifications
+
+- New order submitted by client
+- Task completed (triggers next task assignment)
+- Order fully completed (ready for quality check)
+- Material shortages preventing order start
+- Tasks overdue or at risk
+
+### Employee notifications
+
+- New task assigned
+- High priority task added
+- Order notes or instructions updated
+- Previous task in sequence completed (their task can now start)
+
+### Client notifications
+
+- Order approved and entered production
+- Order completed and ready for pickup/delivery
+- Order delayed with explanation
+- Custom order requires clarification
+
+<Info>
+Notifications will be shown in the dashboard and optionally sent via email based on user preferences.
+</Info>
+
+## Production tracking
+
+### Progress visualization
+
+Both administrators and clients will be able to see order progress:
+
+**For clients:**
+- Current production stage
+- Estimated completion date
+- Progress bar showing percentage complete
+- List of completed and remaining steps
+
+**For administrators:**
+- All of the above, plus:
+- Which employee is assigned to each task
+- Time spent on each task
+- Materials consumed
+- Bottlenecks or delays
+- Comparison against estimated times
+
+### Timeline tracking
+
+The system will record timestamps for all key events:
+
+- Order placed
+- Order approved
+- Each task started
+- Each task completed
+- Quality check performed
+- Order completed
+- Order delivered
+
+This timeline helps identify process inefficiencies and provides accurate delivery estimates for future orders.
+
+## Task priorities
+
+Orders and tasks can be prioritized:
+
+| Priority | Description | Typical use case |
+|----------|-------------|------------------|
+| Urgent | Must complete ASAP | Rush orders, replacements for defects |
+| High | Complete before normal tasks | Large orders, valued clients |
+| Normal | Standard priority | Regular production orders |
+| Low | Can be delayed if needed | Sample orders, internal use |
+
+<Warning>
+Frequent use of "Urgent" priority can disrupt workflow and reduce overall productivity. Reserve for genuine emergencies.
+</Warning>
+
+## Reporting
+
+Administrators will be able to generate reports:
+
+**Order reports:**
+- Orders by status
+- Orders by client
+- Revenue by time period
+- Average completion time
+- On-time delivery percentage
+
+**Task reports:**
+- Tasks by employee
+- Average time per task type
+- Task completion rates
+- Bottleneck identification
+- Employee productivity comparison
+
+**Production reports:**
+- Units produced by time period
+- Most popular products
+- Material consumption by order
+- Quality issue frequency
+
+## Data structure
+
+The order and task system will use these database tables:
+
+**Orders table:**
+- Order ID (UUID)
+- Client ID (foreign key to users)
+- Order date and expected completion
+- Status
+- Product specifications
+- Quantity and cost
+- Notes and custom requirements
+- Created and updated timestamps
+- Soft delete support
+
+**Tasks table:**
+- Task ID (UUID)
+- Order ID (foreign key)
+- Task type (cortador, emplantillador, guarnición, solador)
+- Assigned employee (foreign key to users)
+- Status
+- Priority
+- Start and completion times
+- Estimated duration
+- Materials required
+- Instructions
+- Created and updated timestamps
+
+**Task dependencies table:**
+- Link tasks that must be completed in sequence
+- Ensures tasks start in correct order
+
+<Note>
+All tables will use soft deletes to maintain historical records even after orders are archived or cancelled.
+</Note>

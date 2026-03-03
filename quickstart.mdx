@@ -1,80 +1,224 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Get CALZADO J&R running in under 5 minutes using Docker Compose
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Before starting, verify you have these tools installed:
 
-### Step 1: Set up your local environment
+| Tool | Minimum version | Check command |
+|------|----------------|---------------|
+| Docker | 24+ | `docker --version` |
+| Docker Compose | 2.20+ | `docker compose version` |
+| Git | Any recent | `git --version` |
+
+<Warning>
+  If you don't have Docker installed, visit [docker.com](https://www.docker.com/get-started) to download Docker Desktop for your operating system.
+</Warning>
+
+## Launch the system
+
+<Steps>
+  <Step title="Clone the repository">
+    Open your terminal and clone the project:
+
+    ```bash
+    git clone <repository-url>
+    cd calzado-jyr
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Copy the example environment file and update it with your credentials:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env` and update these **required** fields:
+
+    <CodeGroup>
+    ```bash Database password
+    POSTGRES_PASSWORD=your_secure_password_here
+    ```
+
+    ```bash JWT secret key
+    # Generate a secure key:
+    python -c "import secrets; print(secrets.token_urlsafe(48))"
+    
+    # Then paste it:
+    SECRET_KEY=your_generated_secret_key
+    ```
+
+    ```bash Email configuration
+    MAIL_USERNAME=noreply@calzadojyr.com
+    MAIL_PASSWORD=your_smtp_app_password
+    ```
+    </CodeGroup>
+
+    <Note>
+      For Gmail SMTP, you need to create an [App Password](https://support.google.com/accounts/answer/185833) instead of using your regular password.
+    </Note>
+  </Step>
+
+  <Step title="Start all services">
+    Build and launch the complete stack (database, backend, frontend):
+
+    ```bash
+    docker compose up -d --build
+    ```
+
+    This command:
+    - Builds Docker images for the backend and frontend
+    - Starts PostgreSQL, FastAPI, and React services
+    - Runs database initialization scripts
+    - Enables hot-reload for development
+
+    Verify all services are running:
+
+    ```bash
+    docker compose ps
+    ```
+
+    You should see three services in "Up" state: `db`, `be`, and `fe`.
+  </Step>
+
+  <Step title="Create the administrator account">
+    Run the admin creation script inside the backend container:
+
+    ```bash
+    docker compose exec be python scripts/create_admin.py
+    ```
+
+    The script outputs the default credentials:
+
+    ```
+    ✅ Administrador creado exitosamente:
+       Email: admin@calzadojyr.com
+       Contraseña: Admin123!
+       ⚠️  CAMBIA ESTA CONTRASEÑA después del primer login.
+    ```
+
+    <Warning>
+      Change the default admin password immediately after your first login for security.
+    </Warning>
+  </Step>
+
+  <Step title="Access the application">
+    Open your browser and navigate to:
+
+    | Service | URL | Description |
+    |---------|-----|-------------|
+    | **Frontend** | http://localhost:5173 | Main application interface |
+    | **API Docs** | http://localhost:8000/docs | Interactive Swagger UI |
+    | **Backend** | http://localhost:8000 | REST API endpoints |
+
+    Login with the admin credentials to access the full system.
+  </Step>
+</Steps>
+
+## First meaningful actions
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+  <Accordion title="Validate a customer account">
+    After customers register through the public form, administrators must validate them:
+
+    1. Login as admin at http://localhost:5173
+    2. Navigate to **Users** → **Pending Customers**
+    3. Review customer details
+    4. Click **Validate** to activate the account
+    5. Customer can now login and place orders
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+
+  <Accordion title="Create an employee account">
+    Employees cannot self-register—only admins can create employee accounts:
+
+    1. Login as admin
+    2. Navigate to **Users** → **Create Employee**
+    3. Fill in employee details:
+       - Full name
+       - Email address
+       - Phone number
+       - Occupation (Guarnición, Solador, Cortador, Emplantillador)
+    4. Click **Create Employee**
+    5. System generates temporary credentials and emails them to the employee
+    6. Employee receives email with login credentials
+    7. On first login, employee must change the temporary password
+  </Accordion>
+
+  <Accordion title="Test the API">
+    Explore the interactive API documentation:
+
+    1. Open http://localhost:8000/docs
+    2. Click **POST /api/v1/auth/register** to expand the endpoint
+    3. Click **Try it out**
+    4. Enter sample customer data:
+       ```json
+       {
+         "email": "test@example.com",
+         "password": "SecurePass123!",
+         "full_name": "Test Customer",
+         "phone": "+57 300 1234567",
+         "business_name": "Test Business"
+       }
+       ```
+    5. Click **Execute** to register a test customer
+    6. Check the response to see the created user (with `is_validated: false`)
   </Accordion>
 </AccordionGroup>
 
-### Step 2: Deploy your changes
+## View logs
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+Monitor application activity in real-time:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<CodeGroup>
+```bash All services
+docker compose logs -f
+```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+```bash Backend only
+docker compose logs -f be
+```
 
-### Step 3: Go live
+```bash Frontend only
+docker compose logs -f fe
+```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+```bash Database only
+docker compose logs -f db
+```
+</CodeGroup>
+
+## Stop the system
+
+<CodeGroup>
+```bash Stop services (preserve data)
+docker compose down
+```
+
+```bash Stop and delete all data (complete reset)
+docker compose down -v
+```
+</CodeGroup>
+
+<Warning>
+  The `-v` flag deletes the PostgreSQL volume, removing all users, orders, and data. Only use for development resets.
+</Warning>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Installation guide" icon="book" href="/installation">
+    Learn about local development setup without Docker
+  </Card>
+  <Card title="User roles" icon="users" href="/concepts/roles">
+    Understand permissions and workflows for each role
+  </Card>
+  <Card title="API reference" icon="code" href="/api/auth/register">
+    Explore all available endpoints and schemas
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Common issues and solutions
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

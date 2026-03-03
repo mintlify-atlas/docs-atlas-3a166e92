@@ -1,0 +1,128 @@
+---
+title: Register user
+description: Register a new customer in CALZADO J&R. The account remains pending validation by an administrator.
+---
+
+## Endpoint
+
+```
+POST /api/v1/auth/register
+```
+
+## Request body
+
+<ParamField body="email" type="string" required>
+  User's email address. Must be a valid email format and unique in the system.
+</ParamField>
+
+<ParamField body="full_name" type="string" required>
+  Full name of the user. Must be between 2 and 255 characters.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User's password. Must meet the following requirements:
+  - Minimum 8 characters
+  - At least one uppercase letter
+  - At least one lowercase letter
+  - At least one number
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique identifier for the user (UUID format).
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User's email address.
+</ResponseField>
+
+<ResponseField name="full_name" type="string">
+  User's full name.
+</ResponseField>
+
+<ResponseField name="phone" type="string | null">
+  User's phone number (if provided).
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Indicates whether the user account is active. Defaults to `false` for new registrations.
+</ResponseField>
+
+<ResponseField name="is_validated" type="boolean">
+  Indicates whether the user has been validated by an administrator. Defaults to `false` for new registrations.
+</ResponseField>
+
+<ResponseField name="role_name" type="string | null">
+  Name of the user's role in the system.
+</ResponseField>
+
+<ResponseField name="business_name" type="string | null">
+  Business name (for customer accounts).
+</ResponseField>
+
+<ResponseField name="occupation" type="string | null">
+  Occupation (for employee accounts).
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  Timestamp when the user was created (ISO 8601 format).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  Timestamp when the user was last updated (ISO 8601 format).
+</ResponseField>
+
+## Status codes
+
+<ResponseField name="201" type="Created">
+  User successfully registered.
+</ResponseField>
+
+<ResponseField name="400" type="Bad Request">
+  Invalid request data (e.g., weak password, invalid email format).
+</ResponseField>
+
+<ResponseField name="409" type="Conflict">
+  Email already exists in the system.
+</ResponseField>
+
+<ResponseField name="422" type="Unprocessable Entity">
+  Validation error in request data.
+</ResponseField>
+
+## Example request
+
+```bash
+curl -X POST https://api.calzadojr.com/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "cliente@example.com",
+    "full_name": "Juan Pérez",
+    "password": "SecurePass123"
+  }'
+```
+
+## Example response
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "cliente@example.com",
+  "full_name": "Juan Pérez",
+  "phone": null,
+  "is_active": false,
+  "is_validated": false,
+  "role_name": "cliente",
+  "business_name": null,
+  "occupation": null,
+  "created_at": "2026-03-03T10:30:00Z",
+  "updated_at": "2026-03-03T10:30:00Z"
+}
+```
+
+## Notes
+
+- New accounts are created with `is_active: false` and `is_validated: false`
+- An administrator must validate the account before the user can access the system
+- Password is securely hashed before storage and never returned in responses

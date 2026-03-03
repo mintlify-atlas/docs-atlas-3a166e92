@@ -1,0 +1,228 @@
+---
+title: System architecture
+description: Overview of CALZADO J&R's architecture, Docker services, technology stack, and database design
+---
+
+CALZADO J&R is built as a modern three-tier web application using Docker Compose to orchestrate all services. The system manages authentication, inventory, orders, and task assignments for a shoe factory.
+
+## Docker services
+
+The application runs three containerized services that communicate through a private Docker network:
+
+<Tabs>
+  <Tab title="Database">
+    ### PostgreSQL 17
+    
+    The database service uses the lightweight `postgres:17-alpine` image and stores all persistent data.
+    
+    **Key features:**
+    - Persistent data storage via named volume `calzado_jyr_data`
+    - Health checks ensure database readiness before backend starts
+    - Exposed on port 5432 (development only)
+    - Automatic schema initialization via SQL scripts in `db/init/`
+    
+    **Healthcheck configuration:**
+    ```yaml
+    test: pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 15s
+    ```
+  </Tab>
+  
+  <Tab title="Backend">
+    ### FastAPI (Python 3.12+)
+    
+    The backend API service provides RESTful endpoints for authentication and business logic.
+    
+    **Key features:**
+    - FastAPI framework with automatic OpenAPI documentation
+    - SQLAlchemy 2.0 ORM with Alembic migrations
+    - Depends on database health check before starting
+    - Hot-reload enabled in development mode
+    - Exposed on port 8000
+    
+    **Service dependency:**
+    ```yaml
+    depends_on:
+      db:
+        condition: service_healthy
+    ```
+    
+    <Note>
+      The backend waits for PostgreSQL to be fully ready, not just started. This prevents "connection refused" errors during startup.
+    </Note>
+  </Tab>
+  
+  <Tab title="Frontend">
+    ### React 18 + Vite
+    
+    The frontend service delivers the user interface with hot module replacement.
+    
+    **Key features:**
+    - React 18 with TypeScript
+    - TailwindCSS 4+ for styling
+    - Vite for fast development builds
+    - Hot Module Replacement (HMR) updates in milliseconds
+    - Exposed on port 5173
+    
+    **Volume protection:**
+    ```yaml
+    volumes:
+      - ./fe:/app
+      - /app/node_modules  # Prevents host override
+    ```
+  </Tab>
+</Tabs>
+
+## Technology stack
+
+The system uses modern, production-ready technologies across all layers:
+
+| Layer | Technologies |
+|-------|-------------|
+| **Backend** | Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic, JWT |
+| **Frontend** | React 18+, Vite, TypeScript, TailwindCSS 4+ |
+| **Database** | PostgreSQL 17+ |
+| **Testing** | pytest + httpx (backend), Vitest + Testing Library (frontend) |
+| **Deployment** | Docker Compose |
+
+<Warning>
+  All services communicate through the private `calzado_jyr_net` bridge network. The database is NOT exposed to the internet in production.
+</Warning>
+
+## Database design
+
+The system uses three core tables with UUID primary keys and soft delete support:
+
+<AccordionGroup>
+  <Accordion title="roles table">
+    Stores the three system roles: admin, employee, and client.
+    
+    ```sql
+    CREATE TABLE roles (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        name VARCHAR(50) UNIQUE NOT NULL,
+        description VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        deleted_at TIMESTAMP WITH TIME ZONE
+    );
+    ```
+    
+    **Initial data:**
+    - `admin` - Full system access
+    - `employee` - Task management
+    - `client` - Order and catalog access
+  </Accordion>
+  
+  <Accordion title="users table">
+    Central table storing all user accounts with role-specific fields.
+    
+    **Core fields:**
+    - `id` (UUID) - Primary key
+    - `email` (VARCHAR) - Unique, indexed for fast login
+    - `hashed_password` (VARCHAR) - bcrypt hashed
+    - `full_name` (VARCHAR) - User's full name
+    - `phone` (VARCHAR) - Contact number
+    - `role_id` (UUID) - Foreign key to roles table
+    
+    **Account state:**
+    - `is_active` (BOOLEAN) - Account can log in
+    - `is_validated` (BOOLEAN) - Admin approved the account
+    - `must_change_password` (BOOLEAN) - Forces password change on next login
+    
+    **Role-specific fields:**
+    - `business_name` (VARCHAR, nullable) - For clients only
+    - `occupation` (VARCHAR, nullable) - For employees: guarnición, solador, cortador, emplantillador
+    
+    **Validation tracking:**
+    - `validated_by` (UUID) - Which admin approved the account
+    - `validated_at` (TIMESTAMP) - When approval occurred
+    
+    **Timestamps:**
+    - `created_at` (TIMESTAMP)
+    - `updated_at` (TIMESTAMP)
+    - `deleted_at` (TIMESTAMP, nullable) - Soft delete
+  </Accordion>
+  
+  <Accordion title="password_reset_tokens table">
+    Temporary tokens for password recovery with one-time use.
+    
+    ```sql
+    CREATE TABLE password_reset_tokens (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token VARCHAR(255) UNIQUE NOT NULL,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        used BOOLEAN DEFAULT FALSE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+    );
+    ```
+    
+    **Security features:**
+    - Tokens expire after 1 hour
+    - One-time use only (`used` flag)
+    - Cascade deletion when user is deleted
+    - Indexed token field for fast lookups
+  </Accordion>
+</AccordionGroup>
+
+## Network isolation
+
+All services run in a private bridge network (`calzado_jyr_net`) for security:
+
+- Services communicate by name (e.g., backend connects to `db:5432`)
+- Database is not accessible from external networks
+- Only mapped ports (5173, 8000, 5432) are exposed to localhost
+- Follows the principle of least privilege
+
+<Note>
+  In production, remove the database port mapping to completely isolate it from external access.
+</Note>
+
+## Data persistence
+
+PostgreSQL data survives container restarts through a named volume:
+
+```yaml
+volumes:
+  calzado_jyr_data:  # Managed by Docker
+```
+
+**Volume operations:**
+- `docker compose down` - Stops containers, keeps data
+- `docker compose down -v` - Stops containers and **deletes all data**
+
+<Warning>
+  Always backup your database before running `docker compose down -v`. This operation is irreversible.
+</Warning>
+
+## Configuration management
+
+All sensitive configuration is managed through environment variables:
+
+**Required variables:**
+- `DATABASE_URL` - PostgreSQL connection string
+- `SECRET_KEY` - JWT signing key (generate with `python -c "import secrets; print(secrets.token_urlsafe(48))"`)
+- `POSTGRES_PASSWORD` - Database password
+- `MAIL_PASSWORD` - SMTP credentials for email
+
+**Why `.env` files?**
+
+The `docker-compose.yml` file is version-controlled in git. Using `.env` files (which are gitignored) prevents credentials from appearing in commit history.
+
+```bash
+# Copy template and fill in your values
+cp .env.example .env
+```
+
+## API documentation
+
+FastAPI automatically generates interactive API documentation:
+
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+These interfaces allow you to test endpoints directly from your browser without writing any code.
